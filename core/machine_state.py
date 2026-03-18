@@ -89,7 +89,7 @@ class MachineState:
 
     # Internal state
     _running: bool = True
-    _simulation_speed: float = 1.0  # 1.0 = real time, 60.0 = 1 min per second
+    _simulation_speed: float = 1.0
 
     def __post_init__(self):
         if not self.components:
@@ -100,72 +100,48 @@ class MachineState:
     # ── Sensor computation ────────────────────────────────────────────────────
 
     def compute_sensors(self) -> SensorReading:
-        """
-        Derive all sensor readings from current component health and
-        operating conditions. Apply noise for realism.
-        """
         components = self.components
 
-        # Oil flow depends on filter health and bypass state
         filter_health = components["fluid_filter"].health_pct
         bypass_open = self.fault_filter_bypass_open
         oil_flow = oil_flow_factor_from_filter_health(filter_health, bypass_open)
 
-        # Base thermodynamic calculations
-        # P1 tracks setpoint pressure (sump)
         p1_base = self.setpoint_psi + PRESSURE_MIN_SUMP_PSI * 0.1
-
-        # P2 line pressure oscillates around setpoint (load/unload cycling)
         p2_base = self.setpoint_psi + random.uniform(-2.0, 4.0)
         if self.fault_solenoid_stuck_closed:
-            # Cannot unload — pressure climbs
             p2_base = self.setpoint_psi + 15.0 + components["solenoid_valve"].health_pct * -0.1
 
-        # P4 upstream of filter
         p4_base = expected_p4(p1_base)
-
-        # P3 downstream of filter — affected by filter restriction
         p3_base = expected_p3(p1_base, filter_health, bypass_open)
 
-        # T1 wet discharge
-        t1_base = expected_t1_with_oil(
-            self.ambient_f, p1_base, p2_base, oil_flow
-        )
+        t1_base = expected_t1_with_oil(self.ambient_f, p1_base, p2_base, oil_flow)
 
-        # Apply thermal valve correction
         tv_health = components["thermal_valve"].health_pct
         if self.fault_thermal_valve_stuck_open:
             tv_health = 0.0
         elif self.fault_thermal_valve_stuck_closed:
             tv_health = 5.0
-            t1_base += 30.0  # severe overheating when valve can't divert to cooler
+            t1_base += 30.0
 
-        t1_base = thermal_valve_correction(
-            t1_base, self.ambient_f, tv_health, self.load_pct
-        )
+        t1_base = thermal_valve_correction(t1_base, self.ambient_f, tv_health, self.load_pct)
 
-        # Oil cooler degradation adds to T1
         cooler_health = components["oil_cooler"].health_pct
         if cooler_health < 70:
             cooler_penalty = (70.0 - cooler_health) / 70.0 * 20.0
             t1_base += cooler_penalty
 
-        # T2 dry discharge — separator efficiency
         sep_health = components["separator_element"].health_pct
         t2_base = expected_t2(t1_base, sep_health)
 
-        # PSW1 inlet vacuum — rises as inlet filter loads
         inlet_health = components["inlet_filter"].health_pct
         inlet_restriction = max(0, (100.0 - inlet_health) / 100.0)
         psw1_base = inlet_restriction * INLET_FILTER_VACUUM_FAULT_WC * \
                     (0.5 + self.load_pct / 100.0 * 0.5)
 
-        # Add load influence to P1/T1
         load_factor = self.load_pct / 100.0
         p1_base += load_factor * 8.0
         t1_base += load_factor * 5.0
 
-        # Apply sensor noise
         def noise(sensor_id: float, base: float) -> float:
             n = SENSOR_NOISE.get(sensor_id, 0.3)
             return base + random.gauss(0, n)
@@ -186,22 +162,15 @@ class MachineState:
     # ── Time advancement ──────────────────────────────────────────────────────
 
     def advance(self, hours: float):
-        """
-        Advance machine state by given hours.
-        Degrades all components under current operating conditions.
-        """
         load_mult = get_load_multiplier(self.load_pct)
         temp_mult = get_ambient_multiplier(self.ambient_f)
-
         for component in self.components.values():
             component.degrade(hours, load_mult, temp_mult)
-
         self.total_hours += hours
 
     # ── Status ────────────────────────────────────────────────────────────────
 
     def get_active_faults(self) -> list:
-        """Return list of active fault conditions based on current sensor readings."""
         reading = self.compute_sensors()
         faults = []
 
@@ -246,6 +215,8 @@ class MachineState:
                     "hours_to_service": round(c.hours_to_service, 0) if c.hours_to_service else None,
                     "overdue_hours": round(c.overdue_hours, 0),
                     "is_fault_risk": c.is_fault_risk,
+                    "last_service_hrs": round(self.total_hours - c.operating_hours, 0),
+                    "service_interval_hrs": c.service_interval_hrs,
                 }
                 for cid, c in self.components.items()
             },

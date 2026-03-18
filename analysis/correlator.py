@@ -66,6 +66,7 @@ def analyse(state: MachineState) -> list:
     findings.extend(_check_composite_cd001(reading, state))
     findings.extend(_check_composite_cd002(reading, state))
     findings.extend(_check_composite_cd003(reading, state))
+    findings.extend(_check_component_health(state))
 
     # Sort: CRITICAL > ACTION > WARNING > INFO
     severity_order = {"CRITICAL": 0, "ACTION": 1, "WARNING": 2, "INFO": 3}
@@ -242,9 +243,6 @@ def _check_corr_005(reading: SensorReading, state: MachineState) -> list:
     """CORR_005 — P1 vs P2 relationship. DERIVED."""
     findings = []
 
-    p1_p2_ratio = reading.P1 / reading.P2 if reading.P2 > 0 else 1.0
-
-    # P1 should be lower than P2 in normal operation
     if reading.P1 > reading.P2 + 5:
         findings.append(CorrelationFinding(
             "CORR_005",
@@ -296,10 +294,7 @@ def _check_composite_cd001(reading: SensorReading, state: MachineState) -> list:
     delta = reading.P4_P3_delta
     t1_ok = reading.T1 < DISCHARGE_TEMP_WARNING_F
 
-    # Low delta despite high operating hours and T1 looks fine
-    if (filter_hrs > 1500
-            and delta < 3.0
-            and t1_ok):
+    if (filter_hrs > 1500 and delta < 3.0 and t1_ok):
         findings.append(CorrelationFinding(
             "CD_001",
             "silent_filter_bypass_suspected",
@@ -368,6 +363,88 @@ def _check_composite_cd003(reading: SensorReading, state: MachineState) -> list:
             "Do not wait for dP alarm — pre-alarm intervention is significantly cheaper.",
             "CD_003",
         ))
+
+    return findings
+
+
+# ── Direct component health checks ───────────────────────────────────────────
+
+def _check_component_health(state: MachineState) -> list:
+    """
+    Fires when a component is critically degraded regardless of whether
+    sensors have yet shown a pattern. Catches components silently failing
+    before sensor deviation appears — the gap the correlator previously missed.
+
+    ACTION threshold: health ≤ 40% — plan replacement
+    CRITICAL threshold: health ≤ 20% — immediate replacement
+    """
+    findings = []
+
+    COMPONENT_CHECKS = [
+        # (id, display_name, action_pct, critical_pct, action_text, chain_ref)
+        ("thermal_valve", "Thermal valve element",
+         40, 20,
+         "Replace thermal valve element (P/N 02250100-374). "
+         "Degraded valve cannot regulate oil temperature — risk of overcooling or thermal runaway.",
+         "FC_003"),
+        ("oil_cooler", "Oil cooler",
+         40, 20,
+         "Inspect and clean oil cooler. If fouling persists, replace core. "
+         "Restricted cooling increases T1 and accelerates separator wear.",
+         "CORR_004"),
+        ("shaft_seal", "Shaft seal",
+         40, 20,
+         "Replace shaft seal assembly. Failed seal causes oil leakage and air end contamination.",
+         "FC_006"),
+        ("coupling_element", "Coupling element",
+         40, 20,
+         "Replace coupling element. Worn coupling causes vibration and motor/air-end misalignment.",
+         "FC_007"),
+        ("main_motor_bearing", "Main motor bearing",
+         40, 20,
+         "Replace main motor bearing. Failure causes motor seizure and unplanned shutdown.",
+         "FC_008"),
+        ("solenoid_valve", "Solenoid valve",
+         40, 20,
+         "Replace solenoid valve. Degraded solenoid prevents load/unload cycling — "
+         "risk of overpressure or continuous full-load operation.",
+         "FC_009"),
+        ("blowdown_valve", "Blowdown valve",
+         40, 20,
+         "Inspect and replace blowdown valve. Failure prevents pressure release on stop.",
+         "FC_010"),
+    ]
+
+    for comp_id, name, action_pct, critical_pct, action_text, chain_ref in COMPONENT_CHECKS:
+        comp = state.components.get(comp_id)
+        if comp is None:
+            continue
+        h = comp.health_pct
+
+        if h <= critical_pct:
+            findings.append(CorrelationFinding(
+                f"CH_{comp_id.upper()}",
+                f"{comp_id}_health_critical",
+                f"{name} health at {h:.0f}% — at or below fault threshold. "
+                f"Failure imminent. Immediate replacement required.",
+                "MANUAL",
+                "CRITICAL",
+                [],
+                action_text,
+                chain_ref,
+            ))
+        elif h <= action_pct:
+            findings.append(CorrelationFinding(
+                f"CH_{comp_id.upper()}",
+                f"{comp_id}_health_action",
+                f"{name} health at {h:.0f}% — approaching fault threshold. "
+                f"Plan replacement within next service window.",
+                "MANUAL",
+                "ACTION",
+                [],
+                action_text,
+                chain_ref,
+            ))
 
     return findings
 

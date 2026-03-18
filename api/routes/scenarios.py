@@ -4,7 +4,7 @@ Scenario routes — load operating scenarios, advance time.
 
 from fastapi import APIRouter, HTTPException
 from api.models import ScenarioRequest, AdvanceTimeRequest, OperatingConditionsRequest
-from simulation.scenario_engine import build_scenario, list_scenarios
+from simulation.scenario_engine import build_scenario, list_scenarios, DEMO_NARRATIVES
 from api.routes.state import set_state, _state
 import api.routes.state as state_module
 
@@ -26,10 +26,17 @@ def load_scenario(req: ScenarioRequest):
 
     state_module._state = new_state
     set_state(new_state)
-    return {
+
+    result = {
         "loaded": req.name,
         "summary": new_state.summary(),
     }
+
+    # Attach narrative context if this is a demo scenario
+    if req.name in DEMO_NARRATIVES:
+        result["narrative"] = DEMO_NARRATIVES[req.name]
+
+    return result
 
 
 @router.post("/advance")
@@ -84,4 +91,65 @@ def set_conditions(req: OperatingConditionsRequest):
             "ambient_f": state_module._state.ambient_f,
             "setpoint_psi": state_module._state.setpoint_psi,
         },
+    }
+
+
+@router.get("/demos")
+def list_demos():
+    """List all demo narratives with their metadata."""
+    return {
+        "demos": [
+            {
+                "id": k,
+                "title": v["title"],
+                "subtitle": v["subtitle"],
+                "hours": v["hours"],
+                "conditions": v["conditions"],
+                "primary_symptom": v["primary_symptom"],
+                "active_findings": v["active_findings"],
+                "fta_highlight": v["fta_highlight"],
+            }
+            for k, v in DEMO_NARRATIVES.items()
+        ]
+    }
+
+
+@router.post("/demo")
+def load_demo(body: dict):
+    """
+    Load a demo narrative scenario.
+    Body: { "demo": "demo_overdue_service" }
+    Returns full narrative context + machine state.
+    """
+    demo_id = body.get("demo")
+    if not demo_id:
+        raise HTTPException(status_code=400, detail="Provide 'demo' field")
+
+    if demo_id not in DEMO_NARRATIVES:
+        raise HTTPException(status_code=400, detail={
+            "error": f"Unknown demo: {demo_id}",
+            "available": list(DEMO_NARRATIVES.keys()),
+        })
+
+    try:
+        new_state = build_scenario(demo_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    state_module._state = new_state
+    set_state(new_state)
+
+    narrative = DEMO_NARRATIVES[demo_id]
+
+    return {
+        "loaded": demo_id,
+        "narrative": narrative,
+        "summary": new_state.summary(),
+        "suggested_next_steps": narrative["demo_flow"],
+        "diagnose_with": {
+            "primary": narrative["primary_symptom"],
+            "secondary": narrative["secondary_symptom"],
+            "url": f"/diagnose/symptoms/{narrative['primary_symptom']}",
+        },
+        "fta_url": f"/analysis/fta?highlight={narrative['fta_highlight']}",
     }

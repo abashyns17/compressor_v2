@@ -141,6 +141,11 @@
   #api-url { width:190px; color:var(--text2); }
   #last-upd { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--text3); }
   #err-banner { display:none; background:rgba(224,48,64,.1); border-bottom:1px solid var(--red2); padding:4px 14px; font-family:var(--mono); font-size:11px; color:var(--red); }
+  #narrative-banner { display:none; background:rgba(32,128,224,.05); border-bottom:1px solid rgba(32,128,224,.12); padding:8px 18px; flex-shrink:0; }
+  .nb-title { font-family:var(--mono); font-size:11px; color:var(--blue); font-weight:600; margin-bottom:3px; }
+  .nb-story { font-size:12px; color:var(--text2); line-height:1.45; margin-bottom:5px; max-width:900px; }
+  .nb-flow { display:flex; gap:5px; flex-wrap:wrap; }
+  .nb-step { font-family:var(--mono); font-size:10px; background:var(--bg2); border:1px solid var(--bord2); border-radius:2px; padding:2px 8px; color:var(--text3); }
 </style>
 </head>
 <body>
@@ -152,9 +157,15 @@
   <div class="chip" id="hrs-lbl">— hrs</div>
   <a class="nav-link" href="predict.html" id="predict-link">Predict <span style="font-size:13px">→</span></a>
   <a class="nav-link" href="fta.html" id="fta-link" style="color:var(--red);border-color:rgba(224,48,64,.3)">FTA <span style="font-size:13px">↗</span></a>
+  <a class="nav-link" href="diagnose.html" id="diagnose-link" style="color:var(--cyan);border-color:rgba(24,184,200,.3)">Diagnose</a>
   <div id="conn"><div class="dot" id="sdot"></div><span id="stxt">connecting</span></div>
 </header>
 <div id="err-banner">API unreachable — check backend is running</div>
+<div id="narrative-banner">
+  <div class="nb-title" id="nb-title"></div>
+  <div class="nb-story" id="nb-story"></div>
+  <div class="nb-flow" id="nb-flow"></div>
+</div>
 
 <div class="body">
   <div class="lpanel">
@@ -229,6 +240,14 @@
   <div class="cl">Scenario</div>
   <select id="sc-sel">
     <option value="">— load —</option>
+    <optgroup label="── Demo Narratives ──">
+    <option value="demo_overdue_service">● Overdue Service</option>
+    <option value="demo_summer_thermal">● Summer Thermal</option>
+    <option value="demo_silent_separator">● Silent Separator</option>
+    <option value="demo_overcooling">● Overcooling Mystery</option>
+    <option value="demo_cascade">● 3am Cascade</option>
+    </optgroup>
+    <optgroup label="── Base Scenarios ──">
     <option value="normal">normal</option>
     <option value="stress_filter">stress · filter</option>
     <option value="stress_inlet">stress · inlet</option>
@@ -239,6 +258,7 @@
     <option value="terminal_separator">terminal · separator</option>
     <option value="terminal_thermal">terminal · thermal</option>
     <option value="terminal_solenoid">terminal · solenoid</option>
+    </optgroup>
   </select>
   <button class="prim" onclick="loadScenario()">Load</button>
   <div class="cs"></div>
@@ -270,58 +290,89 @@ const MAXPTS = 60;
 let scenario = "none", charts = {}, lastSensors = null, evLog = [];
 let metric = true;
 
+// ── Unit helpers — PASSTHROUGH ONLY ──────────────────────────────────────────
+// Backend returns already-converted values. No math here. Ever.
 const U = {
-  tempVal:  f  => metric ? (f-32)*5/9 : f,
+  tempVal:  v  => v,
   tempUnit: () => metric ? "°C" : "°F",
-  tempFmt:  f  => U.tempVal(f).toFixed(1),
-  presVal:  p  => metric ? +(p*0.0689476) : p,
+  tempFmt:  v  => v != null ? Number(v).toFixed(1) : "—",
+  presVal:  v  => v,
   presUnit: () => metric ? "bar" : "psi",
-  presFmt:  p  => U.presVal(p).toFixed(metric?2:1),
-  vacVal:   v  => metric ? +(v*2.4884) : v,
+  presFmt:  v  => v != null ? Number(v).toFixed(2) : "—",
+  vacVal:   v  => v,
   vacUnit:  () => metric ? "mbar" : "in.wc",
-  vacFmt:   v  => U.vacVal(v).toFixed(1),
-  presRange:()=> metric?{min:2.5,max:12.5,y2Min:0,y2Max:1.8}:{min:40,max:180,y2Min:0,y2Max:25},
-  tempRange:()=> metric?{min:38,max:107,y2Min:-5,y2Max:20}:{min:100,max:220,y2Min:-5,y2Max:40},
-  vacRange: ()=> metric?{min:0,max:60}:{min:0,max:25},
+  vacFmt:   v  => v != null ? Number(v).toFixed(1) : "—",
+  presRange: () => metric ? {min:0, max:14,  y2Min:0, y2Max:1.8} : {min:0, max:200, y2Min:0, y2Max:25},
+  tempRange: () => metric ? {min:0, max:110, y2Min:-5,y2Max:20}  : {min:30,max:230, y2Min:-5,y2Max:40},
+  vacRange:  () => metric ? {min:0, max:70}                      : {min:0, max:30},
 };
+
+// ── Thresholds — both unit systems, selected at runtime ───────────────────────
+function thr() {
+  return metric ? {
+    P1_fault:9.30, P2_fault:8.96, P3_warn:3.45,
+    T1_shut:93.3, T1_warn:90.6, T2_fault:90.6,
+    V_fault:54.7, V_warn:37.3,
+    P_max:14, T_max:110, V_max:70,
+    DP_fault:1.38, DP_warn:1.03, DT_fault:2.8, DT_warn:5.6,
+    P2_line:8.27, DP_line:1.38,
+    T1_warn_line:90.6, T1_shut_line:93.3,
+    DT_line:2.8, PSW1_line:54.7,
+  } : {
+    P1_fault:135, P2_fault:130, P3_warn:50,
+    T1_shut:200, T1_warn:195, T2_fault:195,
+    V_fault:22, V_warn:15,
+    P_max:200, T_max:230, V_max:30,
+    DP_fault:20, DP_warn:15, DT_fault:5, DT_warn:10,
+    P2_line:120, DP_line:20,
+    T1_warn_line:195, T1_shut_line:200,
+    DT_line:5, PSW1_line:22,
+  };
+}
 
 function toggleUnits() {
   metric = !metric;
   const btn = document.getElementById("units-btn");
-  btn.textContent = metric?"metric":"imperial";
-  btn.style.color = metric?"var(--cyan)":"var(--amber)";
-  ["P1","P2","P3","P4"].forEach(id=>{ const el=document.getElementById("lbl-"+id+"-unit"); if(el) el.textContent=U.presUnit(); });
-  ["T1","T2"].forEach(id=>{ const el=document.getElementById("lbl-"+id+"-unit"); if(el) el.textContent=U.tempUnit(); });
-  const p=document.getElementById("lbl-PSW1-unit"); if(p) p.textContent=U.vacUnit();
-  const a=document.getElementById("lbl-amb-unit");  if(a) a.textContent=U.tempUnit();
-  const s=document.getElementById("lbl-set-unit");  if(s) s.textContent=U.presUnit();
-  rebuildChartAxes(); updateChartTitles();
-  if (lastSensors) updateAllCharts(lastSensors);
+  btn.textContent = metric ? "metric" : "imperial";
+  btn.style.color = metric ? "var(--cyan)" : "var(--amber)";
+  ["P1","P2","P3","P4"].forEach(id => { const el = document.getElementById("lbl-"+id+"-unit"); if(el) el.textContent = U.presUnit(); });
+  ["T1","T2"].forEach(id => { const el = document.getElementById("lbl-"+id+"-unit"); if(el) el.textContent = U.tempUnit(); });
+  const pv = document.getElementById("lbl-PSW1-unit"); if(pv) pv.textContent = U.vacUnit();
+  const av = document.getElementById("lbl-amb-unit");  if(av) av.textContent = U.tempUnit();
+  const sv = document.getElementById("lbl-set-unit");  if(sv) sv.textContent = U.presUnit();
+  rebuildChartAxes(); updateChartTitles(); poll();
 }
 
 function rebuildChartAxes() {
-  const pr=U.presRange(), tr=U.tempRange(), vr=U.vacRange();
+  const T = thr();
+  const pr = U.presRange(), tr = U.tempRange(), vr = U.vacRange();
   const axMap = {
-    P1:{y:{min:pr.min,max:pr.max}}, P2:{y:{min:pr.min,max:pr.max}}, P3:{y:{min:pr.min,max:pr.max}},
+    P1:{y:{min:pr.min,max:pr.max}}, P2:{y:{min:pr.min,max:pr.max}},
+    P3:{y:{min:pr.min,max:pr.max}},
     P4delta:{y:{min:pr.min,max:pr.max},y2:{min:pr.y2Min,max:pr.y2Max}},
-    T1:{y:{min:tr.min,max:tr.max}}, T2delta:{y:{min:tr.min,max:tr.max},y2:{min:tr.y2Min,max:tr.y2Max}},
+    T1:{y:{min:tr.min,max:tr.max}},
+    T2delta:{y:{min:tr.min,max:tr.max},y2:{min:tr.y2Min,max:tr.y2Max}},
     PSW1:{y:{min:vr.min,max:vr.max}},
   };
   const thrMap = {
-    P2:[metric?120*.0689476:120], P4delta:[metric?20*.0689476:20],
-    T1:[metric?(195-32)*5/9:195,metric?(200-32)*5/9:200],
-    T2delta:[metric?5*5/9:5], PSW1:[metric?22*2.4884:22],
+    P2:[T.P2_line], P4delta:[T.DP_line],
+    T1:[T.T1_warn_line,T.T1_shut_line], T2delta:[T.DT_line], PSW1:[T.PSW1_line],
   };
-  Object.entries(axMap).forEach(([id,axes])=>{
-    const {chart,def}=charts[id]||{}; if(!chart) return;
-    Object.entries(axes).forEach(([ax,range])=>{ if(chart.options.scales[ax]){chart.options.scales[ax].min=range.min;chart.options.scales[ax].max=range.max;} });
-    (thrMap[id]||[]).forEach((val,ti)=>{ const dsIdx=def.datasets.length+ti; if(chart.data.datasets[dsIdx]) chart.data.datasets[dsIdx].data=Array(MAXPTS).fill(val); });
+  Object.entries(axMap).forEach(([id,axes]) => {
+    const {chart,def} = charts[id]||{}; if(!chart) return;
+    Object.entries(axes).forEach(([ax,range]) => {
+      if(chart.options.scales[ax]){chart.options.scales[ax].min=range.min;chart.options.scales[ax].max=range.max;}
+    });
+    (thrMap[id]||[]).forEach((val,ti) => {
+      const dsIdx=def.datasets.length+ti;
+      if(chart.data.datasets[dsIdx]) chart.data.datasets[dsIdx].data=Array(MAXPTS).fill(val);
+    });
     chart.update("none");
   });
 }
 
 function updateChartTitles() {
-  const m={
+  const m = {
     "P1":`P1 — Wet sump (${U.presUnit()})`,
     "P2":`P2 — Line / discharge (${U.presUnit()})`,
     "P3":`P3 — Injection fluid (${U.presUnit()})`,
@@ -330,204 +381,301 @@ function updateChartTitles() {
     "T2delta":`T2 &amp; T1–T2 Δ (${U.tempUnit()}) <span style="font-size:9px;color:var(--text3)">dual axis</span>`,
     "PSW1":`PSW1 — Inlet vacuum (${U.vacUnit()})`,
   };
-  Object.entries(m).forEach(([id,title])=>{ const el=document.querySelector(`#cc-${id} .cc-title > span:first-child`); if(el) el.innerHTML=title; });
+  Object.entries(m).forEach(([id,title]) => {
+    const el = document.querySelector(`#cc-${id} .cc-title > span:first-child`);
+    if(el) el.innerHTML = title;
+  });
 }
 
 function convertUnitsInText(text) {
-  if (!text) return text;
-  if (metric) {
-    text = text.replace(/(-?\d+(?:\.\d+)?)\s*°F/g,(_,n)=>{ const c=(parseFloat(n)-32)*5/9; return c.toFixed(Math.abs(c)<10?1:0)+'°C'; });
-    text = text.replace(/(-?\d+(?:\.\d+)?)\s*psi/g,(_,n)=>(parseFloat(n)*0.0689476).toFixed(2)+' bar');
-    text = text.replace(/(-?\d+(?:\.\d+)?)\s*in\.wc/g,(_,n)=>(parseFloat(n)*2.4884).toFixed(1)+' mbar');
-    text = text.replace(/(-?\d+(?:\.\d+)?)\s*in\.w\.c/g,(_,n)=>(parseFloat(n)*2.4884).toFixed(1)+' mbar');
-  }
+  if(!text||!metric) return text;
+  text = text.replace(/(-?\d+(?:\.\d+)?)\s*°F/g,(_,n)=>{const c=(parseFloat(n)-32)*5/9;return c.toFixed(Math.abs(c)<10?1:0)+'°C';});
+  text = text.replace(/(-?\d+(?:\.\d+)?)\s*psi/g,(_,n)=>(parseFloat(n)*0.0689476).toFixed(2)+' bar');
+  text = text.replace(/(-?\d+(?:\.\d+)?)\s*in\.wc/g,(_,n)=>(parseFloat(n)*2.4884).toFixed(1)+' mbar');
   return text;
 }
 
+// ── Chart definitions ─────────────────────────────────────────────────────────
 const CHART_DEFS = [
-  {id:"P1",canvas:"ch-P1",cur:"cur-P1",datasets:[{key:"P1",label:"P1",color:"#1db87a",yAxis:"y"}],yMin:40,yMax:180,unit:"psi",thresholds:[]},
-  {id:"P2",canvas:"ch-P2",cur:"cur-P2",datasets:[{key:"P2",label:"P2",color:"#2080e0",yAxis:"y"}],yMin:80,yMax:180,unit:"psi",thresholds:[{value:120,color:"#e8a020",label:"unload"}]},
-  {id:"P3",canvas:"ch-P3",cur:"cur-P3",datasets:[{key:"P3",label:"P3",color:"#8060e0",yAxis:"y"}],yMin:40,yMax:180,unit:"psi",thresholds:[]},
-  {id:"P4delta",canvas:"ch-P4delta",cur:"cur-P4",datasets:[{key:"P4",label:"P4",color:"#18b8c8",yAxis:"y"},{key:"P4_P3_delta",label:"ΔP",color:"#e8a020",yAxis:"y2"}],yMin:40,yMax:180,y2Min:0,y2Max:25,unit:"psi",thresholds:[{value:20,color:"#e03040",label:"fault",axis:"y2"}]},
-  {id:"T1",canvas:"ch-T1",cur:"cur-T1",datasets:[{key:"T1",label:"T1",color:"#e03040",yAxis:"y"}],yMin:100,yMax:220,unit:"°F",thresholds:[{value:195,color:"#e8a020",label:"warn"},{value:200,color:"#e03040",label:"shutdown"}]},
-  {id:"T2delta",canvas:"ch-T2delta",cur:"cur-T2",datasets:[{key:"T2",label:"T2",color:"#e8a020",yAxis:"y"},{key:"T1_T2_delta",label:"T1-T2 Δ",color:"#8060e0",yAxis:"y2"}],yMin:80,yMax:220,y2Min:-5,y2Max:40,unit:"°F",thresholds:[{value:5,color:"#e03040",label:"sep warn",axis:"y2"}]},
-  {id:"PSW1",canvas:"ch-PSW1",cur:"cur-PSW1",datasets:[{key:"PSW1",label:"PSW1",color:"#e8a020",yAxis:"y"}],yMin:0,yMax:25,unit:"in.wc",thresholds:[{value:22,color:"#e03040",label:"fault"}]},
+  {id:"P1",canvas:"ch-P1",cur:"cur-P1",datasets:[{key:"P1",label:"P1",color:"#1db87a",yAxis:"y"}],thresholds:[]},
+  {id:"P2",canvas:"ch-P2",cur:"cur-P2",datasets:[{key:"P2",label:"P2",color:"#2080e0",yAxis:"y"}],thresholds:[{color:"#e8a020",label:"unload"}]},
+  {id:"P3",canvas:"ch-P3",cur:"cur-P3",datasets:[{key:"P3",label:"P3",color:"#8060e0",yAxis:"y"}],thresholds:[]},
+  {id:"P4delta",canvas:"ch-P4delta",cur:"cur-P4",datasets:[{key:"P4",label:"P4",color:"#18b8c8",yAxis:"y"},{key:"P4_P3_delta",label:"ΔP",color:"#e8a020",yAxis:"y2"}],thresholds:[{color:"#e03040",label:"fault",axis:"y2"}]},
+  {id:"T1",canvas:"ch-T1",cur:"cur-T1",datasets:[{key:"T1",label:"T1",color:"#e03040",yAxis:"y"}],thresholds:[{color:"#e8a020",label:"warn"},{color:"#e03040",label:"shut"}]},
+  {id:"T2delta",canvas:"ch-T2delta",cur:"cur-T2",datasets:[{key:"T2",label:"T2",color:"#e8a020",yAxis:"y"},{key:"T1_T2_delta",label:"T1-T2 Δ",color:"#8060e0",yAxis:"y2"}],thresholds:[{color:"#e03040",label:"sep warn",axis:"y2"}]},
+  {id:"PSW1",canvas:"ch-PSW1",cur:"cur-PSW1",datasets:[{key:"PSW1",label:"PSW1",color:"#e8a020",yAxis:"y"}],thresholds:[{color:"#e03040",label:"fault"}]},
 ];
 
 function makeChart(def) {
-  const ctx = document.getElementById(def.canvas).getContext("2d");
-  const scales = { x:{display:false}, y:{display:true,position:"left",min:def.yMin,max:def.yMax,grid:{color:"#1e2730"},ticks:{color:"#3d5060",font:{family:"Consolas,monospace",size:10},maxTicksLimit:4},border:{color:"#1e2730"}} };
-  if (def.datasets.some(d=>d.yAxis==="y2")) scales.y2={display:true,position:"right",min:def.y2Min,max:def.y2Max,grid:{drawOnChartArea:false},ticks:{color:"#253040",font:{family:"Consolas,monospace",size:10},maxTicksLimit:4},border:{color:"#1e2730"}};
-  const thrDatasets=(def.thresholds||[]).map(t=>({label:t.label,data:Array(MAXPTS).fill(t.value),borderColor:t.color+"80",borderWidth:1.5,borderDash:[5,4],pointRadius:0,tension:0,fill:false,yAxisID:t.axis||"y"}));
-  return new Chart(ctx,{type:"line",data:{labels:Array(MAXPTS).fill(""),datasets:[...def.datasets.map(d=>({label:d.label,data:Array(MAXPTS).fill(null),borderColor:d.color,backgroundColor:d.color+"14",borderWidth:2,pointRadius:0,tension:0.25,fill:false,yAxisID:d.yAxis})),...thrDatasets]},options:{animation:false,responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},plugins:{legend:{display:def.datasets.length>1,labels:{color:"#7a8fa0",font:{family:"Consolas,monospace",size:10},boxWidth:12,padding:8,filter:item=>!["warn","shutdown","fault","sep warn","unload"].includes(item.text)}},tooltip:{backgroundColor:"#0f1318",borderColor:"#1e2730",borderWidth:1,titleColor:"#c8d4e0",bodyColor:"#7a8fa0",titleFont:{family:"Consolas,monospace",size:11},bodyFont:{family:"Consolas,monospace",size:11},filter:item=>item.datasetIndex<def.datasets.length}},scales}});
+  const T = thr();
+  const pr=U.presRange(), tr=U.tempRange(), vr=U.vacRange();
+  const rangeMap={P1:pr,P2:pr,P3:pr,P4delta:pr,T1:tr,T2delta:tr,PSW1:vr};
+  const r=rangeMap[def.id]||pr;
+  const thrValMap={P2:[T.P2_line],P4delta:[T.DP_line],T1:[T.T1_warn_line,T.T1_shut_line],T2delta:[T.DT_line],PSW1:[T.PSW1_line]};
+  const thrVals=thrValMap[def.id]||[];
+  const ctx=document.getElementById(def.canvas).getContext("2d");
+  const scales={
+    x:{display:false},
+    y:{display:true,position:"left",min:r.min,max:r.max,grid:{color:"#1e2730"},ticks:{color:"#3d5060",font:{family:"Consolas,monospace",size:10},maxTicksLimit:4},border:{color:"#1e2730"}},
+  };
+  if(def.datasets.some(d=>d.yAxis==="y2")){
+    scales.y2={display:true,position:"right",min:r.y2Min,max:r.y2Max,grid:{drawOnChartArea:false},ticks:{color:"#253040",font:{family:"Consolas,monospace",size:10},maxTicksLimit:4},border:{color:"#1e2730"}};
+  }
+  const thrDatasets=def.thresholds.map((t,i)=>({
+    label:t.label,data:Array(MAXPTS).fill(thrVals[i]??0),
+    borderColor:t.color+"80",borderWidth:1.5,borderDash:[5,4],
+    pointRadius:0,tension:0,fill:false,yAxisID:t.axis||"y",
+  }));
+  return new Chart(ctx,{type:"line",data:{
+    labels:Array(MAXPTS).fill(""),
+    datasets:[
+      ...def.datasets.map(d=>({label:d.label,data:Array(MAXPTS).fill(null),borderColor:d.color,backgroundColor:d.color+"14",borderWidth:2,pointRadius:0,tension:0.25,fill:false,yAxisID:d.yAxis})),
+      ...thrDatasets,
+    ],
+  },options:{
+    animation:false,responsive:true,maintainAspectRatio:false,
+    interaction:{intersect:false,mode:"index"},
+    plugins:{
+      legend:{display:def.datasets.length>1,labels:{color:"#7a8fa0",font:{family:"Consolas,monospace",size:10},boxWidth:12,padding:8,filter:item=>!["warn","shut","fault","sep warn","unload"].includes(item.text)}},
+      tooltip:{backgroundColor:"#0f1318",borderColor:"#1e2730",borderWidth:1,titleColor:"#c8d4e0",bodyColor:"#7a8fa0",titleFont:{family:"Consolas,monospace",size:11},bodyFont:{family:"Consolas,monospace",size:11},filter:item=>item.datasetIndex<def.datasets.length},
+    },
+    scales,
+  }});
 }
 
-function initCharts() { Chart.defaults.color="#7a8fa0"; CHART_DEFS.forEach(def=>{charts[def.id]={chart:makeChart(def),def};}); }
+function initCharts(){Chart.defaults.color="#7a8fa0";CHART_DEFS.forEach(def=>{charts[def.id]={chart:makeChart(def),def};});}
 
-function base() { return document.getElementById("api-url").value.replace(/\/$/, ""); }
-async function api(path, method="GET", body=null) {
+// ── API ────────────────────────────────────────────────────────────────────────
+function base(){return document.getElementById("api-url").value.replace(/\/$/,"");}
+function unitsParam(){return "?units="+(metric?"metric":"imperial");}
+
+async function api(path,method="GET",body=null){
   const opts={method,headers:{"Content-Type":"application/json"}};
-  if (body) opts.body=JSON.stringify(body);
+  if(body) opts.body=JSON.stringify(body);
   const r=await fetch(base()+path,opts);
-  if (!r.ok) throw new Error(`${r.status}`);
+  if(!r.ok) throw new Error(`${r.status}`);
   return r.json();
 }
 
-async function poll() {
-  try {
-    const [st,corr,asmt]=await Promise.all([api("/state/"),api("/analysis/correlations"),api("/analysis/assessment")]);
+async function poll(){
+  try{
+    const [st,corr,asmt]=await Promise.all([
+      api("/state/"+unitsParam()),
+      api("/analysis/correlations"),
+      api("/analysis/assessment"),
+    ]);
     setConn(true); lastSensors=st.sensors;
     updateVitals(st); updateAllCharts(st.sensors); updateComponents(st.component_health);
     updateFindings(corr.findings||[]); updateAssessment(asmt.assessment||"—");
     document.getElementById("last-upd").textContent="updated "+new Date().toLocaleTimeString();
-  } catch(e) { setConn(false); document.getElementById("err-banner").style.display="block"; }
+  }catch(e){
+    setConn(false);
+    document.getElementById("err-banner").style.display="block";
+  }
 }
 
-function setConn(ok) {
+function setConn(ok){
   document.getElementById("sdot").className="dot"+(ok?" on":"");
   document.getElementById("stxt").textContent=ok?"live":"offline";
   if(ok) document.getElementById("err-banner").style.display="none";
 }
 
-function updateVitals(data) {
+// ── Vitals ────────────────────────────────────────────────────────────────────
+function updateVitals(data){
   const s=data.sensors, c=data.operating_conditions||{}, hrs=data.total_hours;
+  const T=thr();
   setText("v-load",c.load_pct,0);
-  document.getElementById("v-set").textContent=c.setpoint_psi!=null?U.presFmt(c.setpoint_psi):"—";
-  document.getElementById("v-amb").textContent=s.ambient_f!=null?U.tempFmt(s.ambient_f):"—";
+  document.getElementById("v-set").textContent=c.setpoint!=null?Number(c.setpoint).toFixed(2):"—";
+  document.getElementById("v-amb").textContent=s.ambient!=null?Number(s.ambient).toFixed(1):"—";
   document.getElementById("v-hrs").textContent=hrs?Math.round(hrs).toLocaleString():"—";
   document.getElementById("hrs-lbl").textContent=hrs?Math.round(hrs).toLocaleString()+" hrs":"—";
   document.getElementById("scenario-lbl").textContent=scenario;
-  setRow("P1",s.P1,175,s.P1>135?"fault":null,0,U.presVal,2);
-  setRow("P2",s.P2,175,s.P2>130?"fault":null,0,U.presVal,2);
-  setRow("P3",s.P3,175,s.P3<50?"warn":null,0,U.presVal,2);
-  setRow("P4",s.P4,175,null,0,U.presVal,2);
-  const t1st=s.T1>=200?"fault":s.T1>=195?"warn":null;
-  setRow("T1",s.T1,220,t1st,100,U.tempVal,1);
-  setRow("T2",s.T2,220,s.T2>=195?"fault":null,100,U.tempVal,1);
-  setRow("PSW1",s.PSW1,22,s.PSW1>=22?"fault":s.PSW1>=15?"warn":null,0,U.vacVal,1);
+  setRow("P1",s.P1,T.P_max,s.P1>T.P1_fault?"fault":null,0,null,2);
+  setRow("P2",s.P2,T.P_max,s.P2>T.P2_fault?"fault":null,0,null,2);
+  setRow("P3",s.P3,T.P_max,s.P3<T.P3_warn?"warn":null,0,null,2);
+  setRow("P4",s.P4,T.P_max,null,0,null,2);
+  const t1st=s.T1>=T.T1_shut?"fault":s.T1>=T.T1_warn?"warn":null;
+  setRow("T1",s.T1,T.T_max,t1st,0,null,1);
+  setRow("T2",s.T2,T.T_max,s.T2>=T.T2_fault?"fault":null,0,null,1);
+  setRow("PSW1",s.PSW1,T.V_max,s.PSW1>=T.V_fault?"fault":s.PSW1>=T.V_warn?"warn":null,0,null,1);
   const dp=s.P4_P3_delta, dt=s.T1_T2_delta;
-  const dpv=dp!=null?U.presVal(dp):null, dtv=dt!=null?(metric?dt*5/9:dt):null;
-  setDerived("v-dpres",dpv!=null?dpv.toFixed(2)+" "+U.presUnit():"—",dp>=20?"fault":dp>=14?"warn":null);
-  setDerived("v-dtemp",dtv!=null?dtv.toFixed(1)+" "+U.tempUnit():"—",dt<5?"fault":dt<10?"warn":null);
-  const t1dev=s.T1-(s.ambient_f*1.1+80+s.load_pct*0.6);
-  const devEl=document.getElementById("v-devt1");
-  const devDisp=metric?t1dev*5/9:t1dev;
-  devEl.textContent=!isNaN(t1dev)?(devDisp>=0?"+":"")+devDisp.toFixed(1)+" "+U.tempUnit():"—";
-  devEl.className="dr-val"+(t1dev>=12?" fault":t1dev>=8?" warn":t1dev<=-8?" warn":"");
+  setDerived("v-dpres",dp!=null?Number(dp).toFixed(2)+" "+U.presUnit():"—",dp>=T.DP_fault?"fault":dp>=T.DP_warn?"warn":null);
+  setDerived("v-dtemp",dt!=null?Number(dt).toFixed(1)+" "+U.tempUnit():"—",dt<T.DT_fault?"fault":dt<T.DT_warn?"warn":null);
 }
 
 function setText(id,val,dec=1){const el=document.getElementById(id);if(el)el.textContent=val!=null?Number(val).toFixed(dec):"—";}
 
-function setRow(id,val,max,state,min=0,convertor=null,dec=1){
+function setRow(id,val,max,state,min=0,_=null,dec=1){
   if(val==null)return;
   const vEl=document.getElementById("v-"+id),rEl=document.getElementById("row-"+id),bEl=document.getElementById("b-"+id);
-  const disp=convertor?convertor.call(U,val):val;
-  vEl.textContent=disp.toFixed(dec); vEl.className="sr-val"+(state?" "+state:""); rEl.className="sr"+(state?" "+state:"");
+  vEl.textContent=Number(val).toFixed(dec);
+  vEl.className="sr-val"+(state?" "+state:"");
+  rEl.className="sr"+(state?" "+state:"");
   const pct=Math.min(100,Math.max(0,(val-min)/(max-min)*100));
-  bEl.style.width=pct+"%"; bEl.style.background=state==="fault"?"var(--red)":state==="warn"?"var(--amber)":"var(--green)";
+  bEl.style.width=pct+"%";
+  bEl.style.background=state==="fault"?"var(--red)":state==="warn"?"var(--amber)":"var(--green)";
 }
 
 function setDerived(id,text,state){const el=document.getElementById(id);el.textContent=text;el.className="dr-val"+(state?" "+state:"");}
 
-function convertForChart(key,val){
-  if(val==null)return null;
-  if(key==="PSW1")return U.vacVal(val);
-  if(key==="T1_T2_delta")return metric?val*5/9:val;
-  if(key.startsWith("T"))return U.tempVal(val);
-  if(key.startsWith("P"))return U.presVal(val);
-  return val;
-}
-
-function updateAllCharts(s) {
+// ── Charts ────────────────────────────────────────────────────────────────────
+function updateAllCharts(s){
   if(!s)return;
   const ts=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});
   CHART_DEFS.forEach(def=>{
     const {chart}=charts[def.id];
     chart.data.labels.push(ts); if(chart.data.labels.length>MAXPTS)chart.data.labels.shift();
-    def.datasets.forEach((d,i)=>{ const ds=chart.data.datasets[i]; ds.data.push(convertForChart(d.key,s[d.key])); if(ds.data.length>MAXPTS)ds.data.shift(); });
-    for(let i=def.datasets.length;i<chart.data.datasets.length;i++){const tds=chart.data.datasets[i];tds.data.push(tds.data[0]);if(tds.data.length>MAXPTS)tds.data.shift();}
+    def.datasets.forEach((d,i)=>{
+      const ds=chart.data.datasets[i]; const val=s[d.key];
+      ds.data.push(val!=null?val:null); if(ds.data.length>MAXPTS)ds.data.shift();
+    });
+    for(let i=def.datasets.length;i<chart.data.datasets.length;i++){
+      const tds=chart.data.datasets[i];
+      tds.data.push(tds.data[tds.data.length-1]??0); if(tds.data.length>MAXPTS)tds.data.shift();
+    }
     chart.update("none");
-    const first=def.datasets[0], cur=s[first.key], curEl=document.getElementById(def.cur);
-    if(curEl&&cur!=null){const disp=convertForChart(first.key,cur);const unit=first.key.startsWith("P")?U.presUnit():first.key.startsWith("T")?U.tempUnit():first.key==="PSW1"?U.vacUnit():def.unit;curEl.textContent=disp.toFixed(first.key.startsWith("P")?2:1)+" "+unit;}
+    const first=def.datasets[0],cur=s[first.key],curEl=document.getElementById(def.cur);
+    if(curEl&&cur!=null){
+      const unit=first.key.startsWith("P")?U.presUnit():first.key.startsWith("T")?U.tempUnit():first.key==="PSW1"?U.vacUnit():"";
+      const dec=first.key.startsWith("P")?2:1;
+      curEl.textContent=Number(cur).toFixed(dec)+(unit?" "+unit:"");
+    }
   });
 }
 
 function clearCharts(){CHART_DEFS.forEach(def=>{const{chart}=charts[def.id];chart.data.labels=Array(MAXPTS).fill("");chart.data.datasets.forEach(ds=>{ds.data=Array(MAXPTS).fill(null);});chart.update("none");});}
 
+// ── Components ────────────────────────────────────────────────────────────────
 function updateComponents(health){
   if(!health)return;
   const el=document.getElementById("components"); el.innerHTML="";
   Object.entries(health).sort((a,b)=>a[1].health_pct-b[1].health_pct).forEach(([id,d])=>{
-    const pct=d.health_pct, col=pct>=70?"var(--green)":pct>=30?"var(--amber)":"var(--red)";
-    const due=d.hours_to_service!=null?`<span style="font-size:10px;color:var(--text3);margin-left:4px">${d.overdue_hours>0?"⚠ "+Math.round(d.overdue_hours)+"h over":Math.round(d.hours_to_service)+"h left"}</span>`:"";
-    el.innerHTML+=`<div class="comp-row"><div class="comp-name" title="${id}">${id.replace(/_/g," ")}${due}</div><div class="comp-track"><div class="comp-fill" style="width:${pct}%;background:${col}"></div></div><div class="comp-pct" style="color:${col}">${pct.toFixed(0)}%</div></div>`;
+    const pct=d.health_pct,col=pct>=70?"var(--green)":pct>=30?"var(--amber)":"var(--red)";
+    const svc=d.service_interval_hrs;
+    const lastSvc=d.last_service_hrs;
+    let badge="";
+    if(d.overdue_hours>0) badge=`<span style="font-size:10px;color:var(--red);margin-left:4px">⚠ ${Math.round(d.overdue_hours)}h over</span>`;
+    else if(d.hours_to_service!=null) badge=`<span style="font-size:10px;color:var(--text3);margin-left:4px">${Math.round(d.hours_to_service)}h left</span>`;
+    else if(lastSvc!=null) badge=`<span style="font-size:10px;color:var(--text3);margin-left:4px">${Math.round(d.operating_hours)}h on</span>`;
+    el.innerHTML+=`<div class="comp-row"><div class="comp-name" title="${id}">${id.replace(/_/g," ")}${badge}</div><div class="comp-track"><div class="comp-fill" style="width:${pct}%;background:${col}"></div></div><div class="comp-pct" style="color:${col}">${pct.toFixed(0)}%</div></div>`;
   });
 }
 
-function getFtaLink(correlationId) {
-  const apiVal = document.getElementById("api-url").value;
-  const apiParam = apiVal && apiVal !== "http://localhost:8000" ? `&api=${encodeURIComponent(apiVal)}` : "";
-  return `fta.html?highlight=${correlationId}${apiParam}`;
+// ── Findings ──────────────────────────────────────────────────────────────────
+function getFtaLink(cid){
+  const apiVal=document.getElementById("api-url").value;
+  const apiParam=apiVal&&apiVal!=="http://localhost:8000"?`&api=${encodeURIComponent(apiVal)}`:"";
+  return `fta.html?highlight=${cid}${apiParam}`;
 }
 
-let prevSeverity="", prevFindingId="";
-function updateFindings(findings) {
+let prevSeverity="",prevFindingId="";
+function updateFindings(findings){
   const el=document.getElementById("findings");
   if(!findings.length){
     if(prevSeverity!=="OK"){addEvent("CLEAR","No active findings");prevSeverity="OK";}
-    el.innerHTML='<div class="nof">✓ No findings</div>'; return;
+    el.innerHTML='<div class="nof">✓ No findings</div>';
+    document.getElementById("v-devt1").textContent="—";
+    document.getElementById("v-devt1").className="dr-val";
+    return;
   }
   const top=findings[0];
   if(top.severity!==prevSeverity||top.correlation_id!==prevFindingId){
     addEvent(["CRITICAL","ACTION"].includes(top.severity)?"FAULT":"INJECT",`${top.correlation_id} · ${top.severity} · ${top.pattern}`);
     prevSeverity=top.severity; prevFindingId=top.correlation_id;
   }
+  const corr004=findings.find(f=>f.correlation_id==="CORR_004");
+  const devEl=document.getElementById("v-devt1");
+  if(corr004){
+    const m=corr004.interpretation.match(/([\d.]+)°F (above|below)/);
+    if(m){
+      const devF=parseFloat(m[1]),dir=m[2];
+      const devDisplay=metric?(dir==="above"?"+":"-")+(devF*5/9).toFixed(1)+" °C":(dir==="above"?"+":"-")+devF.toFixed(1)+" °F";
+      devEl.textContent=devDisplay;
+      devEl.className="dr-val"+(devF>=12||dir==="below"?" warn":devF>=8?" warn":"");
+    }
+  } else { devEl.textContent="—"; devEl.className="dr-val"; }
   el.innerHTML=findings.slice(0,6).map(f=>`
     <div class="finding ${f.severity}">
       <div class="fh">
         <div class="fid">${f.correlation_id} · ${f.confidence}</div>
         <div style="display:flex;align-items:center;gap:6px">
           <div class="fbadge ${f.severity}">${f.severity}</div>
-          <a href="${getFtaLink(f.correlation_id)}" style="font-family:var(--mono);font-size:9px;color:var(--text3);text-decoration:none;padding:2px 5px;border:1px solid var(--border);border-radius:2px;transition:color .15s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">FTA ↗</a>
+          <a href="${getFtaLink(f.correlation_id)}" style="font-family:var(--mono);font-size:9px;color:var(--text3);text-decoration:none;padding:2px 5px;border:1px solid var(--border);border-radius:2px" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">FTA ↗</a>
         </div>
       </div>
       <div class="ftxt">${convertUnitsInText(f.interpretation)}</div>
-      ${f.action?`<div class="fact">→ ${convertUnitsInText(f.action)}</div>`:""}`
-    +`</div>`).join("");
+      ${f.action?`<div class="fact">→ ${convertUnitsInText(f.action)}</div>`:""}
+    </div>`).join("");
 }
 
 function updateAssessment(text){document.getElementById("assessment").textContent=convertUnitsInText(text);}
 
+// ── Event log ─────────────────────────────────────────────────────────────────
 function addEvent(type,msg){const ts=new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});evLog.unshift({ts,type,msg});if(evLog.length>100)evLog.pop();renderLog();}
 function renderLog(){const el=document.getElementById("evlog");if(!evLog.length){el.innerHTML='<div class="ev-empty">No events yet</div>';return;}el.innerHTML=evLog.map(e=>`<div class="ev-row"><div class="ev-time">${e.ts}</div><div class="ev-badge ${e.type}">${e.type}</div><div class="ev-msg">${e.msg}</div></div>`).join("");}
 
+// ── Tabs ──────────────────────────────────────────────────────────────────────
 function switchTab(name){document.querySelectorAll(".rtab").forEach((t,i)=>{t.classList.toggle("active",["intel","health","log"][i]===name);});document.querySelectorAll(".rtab-body").forEach(b=>{b.classList.toggle("active",b.id==="tab-"+name);});}
 
-async function loadScenario(){const name=document.getElementById("sc-sel").value;if(!name)return;try{await api("/scenarios/load","POST",{name});scenario=name;clearCharts();addEvent("LOAD",`Scenario: ${name}`);poll();}catch(e){alert("Load failed: "+e.message);}}
-async function advanceTime(){const hrs=parseFloat(document.getElementById("adv-sel").value);try{await api("/scenarios/advance","POST",{hours:hrs});addEvent("LOAD",`Advanced ${hrs}h`);poll();}catch(e){alert("Advance failed: "+e.message);}}
-async function inject(fault){try{await api("/inject/fault","POST",{fault});addEvent(fault==="clear_all"?"CLEAR":"INJECT",`Injected: ${fault}`);poll();}catch(e){alert("Inject failed: "+e.message);}}
+// ── Controls ──────────────────────────────────────────────────────────────────
+async function loadScenario(){
+  const name=document.getElementById("sc-sel").value;
+  if(!name) return;
+  try {
+    let result;
+    if(name.startsWith("demo_")){
+      result=await api("/scenarios/demo","POST",{demo:name});
+      if(result.narrative) showNarrative(result.narrative);
+    } else {
+      result=await api("/scenarios/load","POST",{name});
+      hideNarrative();
+    }
+    scenario=name; clearCharts(); addEvent("LOAD","Scenario: "+name); poll();
+  } catch(e){alert("Load failed: "+e.message);}
+}
 
-async function applyUrlParams() {
+function showNarrative(n){
+  document.getElementById("nb-title").textContent=n.title+" — "+n.subtitle;
+  document.getElementById("nb-story").textContent=n.narrative;
+  document.getElementById("nb-flow").innerHTML=(n.demo_flow||[]).map((s,i)=>`<span class="nb-step">${i+1}. ${s}</span>`).join("");
+  document.getElementById("narrative-banner").style.display="block";
+}
+
+function hideNarrative(){document.getElementById("narrative-banner").style.display="none";}
+
+async function advanceTime(){const hrs=parseFloat(document.getElementById("adv-sel").value);try{await api("/scenarios/advance","POST",{hours:hrs});addEvent("LOAD","Advanced "+hrs+"h");poll();}catch(e){alert("Advance failed: "+e.message);}}
+async function inject(fault){try{await api("/inject/fault","POST",{fault});addEvent(fault==="clear_all"?"CLEAR":"INJECT","Injected: "+fault);poll();}catch(e){alert("Inject failed: "+e.message);}}
+
+// ── URL params ────────────────────────────────────────────────────────────────
+async function applyUrlParams(){
   const p=new URLSearchParams(window.location.search);
-  if(p.has("api")){document.getElementById("api-url").value=p.get("api");addEvent("LOAD",`API: ${p.get("api")}`);}
+  if(p.has("api")){document.getElementById("api-url").value=p.get("api");addEvent("LOAD","API: "+p.get("api"));}
   if(p.has("units")&&p.get("units")==="imperial"){metric=true;toggleUnits();}
-  if(p.has("poll")){const ms=parseInt(p.get("poll"),10);if(ms>=500&&ms<=60000){POLL=ms;addEvent("LOAD",`Poll interval: ${ms}ms`);}}
+  if(p.has("poll")){const ms=parseInt(p.get("poll"),10);if(ms>=500&&ms<=60000){POLL=ms;}}
   if(p.has("tab"))switchTab(p.get("tab"));
   const apiVal=document.getElementById("api-url").value;
   const suffix=apiVal&&apiVal!=="http://localhost:8000"?`?api=${encodeURIComponent(apiVal)}`:"";
-  const pLink=document.getElementById("predict-link"); if(pLink) pLink.href="predict.html"+suffix;
-  const fLink=document.getElementById("fta-link");     if(fLink) fLink.href="fta.html"+suffix;
-  if(p.has("scenario")){const name=p.get("scenario");document.getElementById("sc-sel").value=name;try{await api("/scenarios/load","POST",{name});scenario=name;clearCharts();addEvent("LOAD",`Scenario: ${name}`);}catch(e){addEvent("INJECT",`Scenario load failed: ${e.message}`);}}
+  const pLink=document.getElementById("predict-link");if(pLink)pLink.href="predict.html"+suffix;
+  const fLink=document.getElementById("fta-link");if(fLink)fLink.href="fta.html"+suffix;
+  const dLink=document.getElementById("diagnose-link");if(dLink)dLink.href="diagnose.html"+suffix;
+  if(p.has("scenario")){
+    const name=p.get("scenario");
+    document.getElementById("sc-sel").value=name;
+    try{await api("/scenarios/load","POST",{name});scenario=name;clearCharts();addEvent("LOAD","Scenario: "+name);}
+    catch(e){addEvent("INJECT","Scenario load failed: "+e.message);}
+  }
 }
 
 document.getElementById("api-url").addEventListener("change",function(){
   const val=this.value.replace(/\/$/,"");
   const suffix=val&&val!=="http://localhost:8000"?`?api=${encodeURIComponent(val)}`:"";
-  const pLink=document.getElementById("predict-link"); if(pLink) pLink.href="predict.html"+suffix;
-  const fLink=document.getElementById("fta-link");     if(fLink) fLink.href="fta.html"+suffix;
+  const pLink=document.getElementById("predict-link");if(pLink)pLink.href="predict.html"+suffix;
+  const fLink=document.getElementById("fta-link");if(fLink)fLink.href="fta.html"+suffix;
+  const dLink=document.getElementById("diagnose-link");if(dLink)dLink.href="diagnose.html"+suffix;
 });
 
-initCharts(); rebuildChartAxes(); updateChartTitles();
+// ── Boot ──────────────────────────────────────────────────────────────────────
+initCharts();rebuildChartAxes();updateChartTitles();
 poll().then(()=>applyUrlParams()).finally(()=>{setInterval(()=>poll(),POLL);});
 </script>
 </body>

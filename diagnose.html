@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LS110 — Diagnose</title>
+<style>
+  :root {
+    --bg:#0a0c0f; --bg1:#0f1318; --bg2:#141920; --bg3:#1a2028;
+    --border:#1e2730; --bord2:#253040;
+    --text:#c8d4e0; --text2:#7a8fa0; --text3:#3d5060;
+    --green:#1db87a; --amber:#e8a020; --red:#e03040;
+    --blue:#2080e0; --purple:#8060e0; --cyan:#18b8c8;
+    --red2:#701018; --amb2:#7a5010; --blu2:#0f3870; --pur2:#3a2870;
+    --mono:Consolas,'JetBrains Mono','Fira Code','Courier New',monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;display:flex;flex-direction:column;}
+
+  header{background:var(--bg1);border-bottom:1px solid var(--border);padding:0 18px;height:54px;display:flex;align-items:center;gap:14px;flex-shrink:0;}
+  .logo{font-family:var(--mono);font-size:13px;color:var(--text2);letter-spacing:.12em;text-transform:uppercase;}
+  .logo span{color:var(--cyan);}
+  .chip{font-family:var(--mono);font-size:13px;color:var(--text);background:var(--bg2);border:1px solid var(--bord2);padding:3px 10px;border-radius:3px;}
+  .nav-link{font-family:var(--mono);font-size:11px;color:var(--text3);text-decoration:none;padding:4px 10px;border:1px solid var(--border);border-radius:3px;transition:color .15s,border-color .15s;display:flex;align-items:center;gap:5px;}
+  .nav-link:hover{color:var(--text2);border-color:var(--bord2);}
+  #conn{margin-left:auto;font-family:var(--mono);font-size:12px;display:flex;align-items:center;gap:6px;}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 2s infinite;}
+  .dot.on{background:var(--green);}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+  #err-banner{display:none;background:rgba(224,48,64,.1);border-bottom:1px solid var(--red2);padding:3px 14px;font-family:var(--mono);font-size:11px;color:var(--red);flex-shrink:0;}
+
+  .main{flex:1;display:grid;grid-template-columns:320px 1fr;overflow:hidden;}
+
+  .symptom-panel{background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+  .ph{border-bottom:1px solid var(--border);padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;flex-shrink:0;}
+  .symptom-scroll{flex:1;overflow-y:auto;padding:10px;scrollbar-width:thin;scrollbar-color:var(--bord2) transparent;}
+
+  .cat-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;padding:8px 6px 4px;margin-top:4px;}
+  .cat-label:first-child{margin-top:0;}
+
+  .symptom-btn{width:100%;text-align:left;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:4px;cursor:pointer;transition:all .15s;display:flex;align-items:flex-start;gap:10px;}
+  .symptom-btn:hover{border-color:var(--bord2);background:var(--bg3);}
+  .symptom-btn.active{border-color:var(--cyan);background:rgba(24,184,200,.08);}
+  .symptom-btn.active .s-label{color:var(--cyan);}
+  .s-id{font-family:var(--mono);font-size:9px;color:var(--text3);flex-shrink:0;margin-top:2px;width:24px;}
+  .s-label{font-size:12px;font-weight:500;color:var(--text);line-height:1.35;}
+  .s-desc{font-size:10px;color:var(--text3);margin-top:2px;line-height:1.4;}
+
+  /* ── Suggested symptom states ── */
+  .symptom-btn.suggested-immediate{border-color:rgba(224,48,64,.5);background:rgba(224,48,64,.06);}
+  .symptom-btn.suggested-immediate .s-label{color:var(--red);}
+  .symptom-btn.suggested-action{border-color:rgba(232,160,32,.5);background:rgba(232,160,32,.05);}
+  .symptom-btn.suggested-action .s-label{color:var(--amber);}
+  .symptom-btn.suggested-monitor{border-color:rgba(32,128,224,.3);}
+  .symptom-btn.suggested-monitor .s-label{color:var(--blue);}
+  .s-hint{font-size:10px;color:var(--text3);margin-top:3px;line-height:1.3;font-style:italic;}
+  .s-badge{display:inline-block;font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:2px;margin-bottom:3px;}
+  .badge-immediate{background:var(--red2);color:var(--red);}
+  .badge-action{background:var(--amb2);color:var(--amber);}
+  .badge-monitor{background:var(--blu2);color:#80b0ff;}
+  .pending-hdr{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;padding:8px 6px 4px;display:flex;align-items:center;gap:6px;}
+  .pending-hdr-count{background:var(--red2);color:var(--red);padding:1px 6px;border-radius:2px;font-size:9px;}
+  .other-hdr{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;padding:10px 6px 4px;border-top:1px solid var(--border);margin-top:6px;}
+
+  .diag-panel{display:flex;flex-direction:column;overflow:hidden;}
+  .diag-scroll{flex:1;overflow-y:auto;padding:20px 24px;scrollbar-width:thin;scrollbar-color:var(--bord2) transparent;}
+
+  .empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;}
+  .empty-icon{font-size:40px;opacity:.2;}
+  .empty-text{font-family:var(--mono);font-size:12px;color:var(--text3);text-align:center;}
+
+  .step{max-width:680px;}
+
+  .hyp-card{background:var(--bg2);border:1px solid var(--bord2);border-left:3px solid var(--cyan);border-radius:4px;padding:14px 16px;margin-bottom:16px;}
+  .hyp-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .step-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;}
+  .conf-chip{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;letter-spacing:.06em;}
+  .conf-HIGH{background:rgba(29,184,122,.15);color:var(--green);}
+  .conf-MEDIUM{background:rgba(232,160,32,.15);color:var(--amber);}
+  .conf-LOW{background:rgba(224,48,64,.15);color:var(--red);}
+  .hyp-label{font-size:13px;color:var(--text);line-height:1.4;}
+
+  .evidence{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:16px;}
+  .ev-title{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;}
+  .ev-grid{display:flex;flex-wrap:wrap;gap:6px;}
+  .ev-item{background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-family:var(--mono);font-size:10px;}
+  .ev-key{color:var(--text3);}
+  .ev-val{color:var(--text);margin-left:4px;font-weight:600;}
+
+  .q-card{background:var(--bg1);border:1px solid var(--bord2);border-radius:4px;padding:16px;margin-bottom:12px;}
+  .q-step-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;}
+  .q-text{font-size:14px;color:var(--text);font-weight:500;line-height:1.45;margin-bottom:6px;}
+  .q-context{font-size:11px;color:var(--text3);font-style:italic;}
+
+  .answer-btn{width:100%;text-align:left;background:var(--bg2);border:1px solid var(--bord2);border-radius:4px;padding:12px 14px;margin-bottom:6px;cursor:pointer;font-size:13px;color:var(--text);transition:all .15s;display:flex;align-items:center;gap:10px;}
+  .answer-btn:hover{border-color:var(--cyan);background:rgba(24,184,200,.06);color:var(--cyan);}
+  .answer-btn:disabled{opacity:.4;cursor:not-allowed;}
+  .answer-letter{font-family:var(--mono);font-size:10px;color:var(--text3);width:16px;flex-shrink:0;}
+
+  .diagnosis-card{border-radius:4px;padding:16px;margin-bottom:12px;border:1px solid;}
+  .diagnosis-card.urgency-immediate{background:rgba(224,48,64,.1);border-color:rgba(224,48,64,.4);border-left:3px solid var(--red);}
+  .diagnosis-card.urgency-within_7_days{background:rgba(232,160,32,.08);border-color:rgba(232,160,32,.35);border-left:3px solid var(--amber);}
+  .diagnosis-card.urgency-within_14_days{background:rgba(29,184,122,.06);border-color:rgba(29,184,122,.25);border-left:3px solid var(--green);}
+  .diagnosis-card.urgency-monitor{background:var(--bg2);border-color:var(--bord2);border-left:3px solid var(--blue);}
+
+  .diag-header{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .diag-label{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;}
+  .urgency-immediate .diag-label{color:var(--red);}
+  .urgency-within_7_days .diag-label{color:var(--amber);}
+  .urgency-within_14_days .diag-label{color:var(--green);}
+  .urgency-monitor .diag-label{color:var(--blue);}
+
+  .urgency-badge{font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:2px;letter-spacing:.06em;}
+  .urgency-immediate .urgency-badge{background:var(--red2);color:var(--red);}
+  .urgency-within_7_days .urgency-badge{background:var(--amb2);color:var(--amber);}
+  .urgency-within_14_days .urgency-badge{background:#0a3020;color:var(--green);}
+  .urgency-monitor .urgency-badge{background:var(--blu2);color:#80b0ff;}
+
+  .diag-text{font-size:13px;color:var(--text);line-height:1.5;margin-bottom:10px;}
+  .action-box{background:rgba(0,0,0,.2);border-radius:3px;padding:10px 12px;}
+  .action-label{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;}
+  .action-text{font-size:12px;color:var(--text2);line-height:1.5;}
+
+  .fta-link-btn{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-family:var(--mono);font-size:10px;color:var(--red);text-decoration:none;padding:5px 10px;border:1px solid rgba(224,48,64,.3);border-radius:3px;transition:all .15s;}
+  .fta-link-btn:hover{background:rgba(224,48,64,.08);}
+
+  .reset-btn{margin-top:16px;font-family:var(--mono);font-size:10px;padding:6px 14px;background:var(--bg2);border:1px solid var(--bord2);color:var(--text3);border-radius:3px;cursor:pointer;transition:all .15s;}
+  .reset-btn:hover{color:var(--text2);border-color:var(--text3);}
+
+  .loading{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--text3);padding:20px 0;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spinner{width:14px;height:14px;border:1.5px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;}
+
+  footer{background:var(--bg1);border-top:1px solid var(--border);padding:7px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .fl{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;}
+  input[type=text].fi{background:var(--bg2);border:1px solid var(--bord2);color:var(--text2);font-family:var(--mono);font-size:11px;padding:4px 8px;border-radius:3px;outline:none;width:220px;}
+  #f-status{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3);}
+
+  .symptom-scroll::-webkit-scrollbar,.diag-scroll::-webkit-scrollbar{width:4px;}
+  .symptom-scroll::-webkit-scrollbar-thumb,.diag-scroll::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">ProActive <span>DIAGNOSE</span></div>
+  <div class="chip">Sullair LS110</div>
+  <a class="nav-link" href="monitor.html" id="monitor-link">← Monitor</a>
+  <a class="nav-link" href="fta.html" id="fta-link" style="color:var(--red);border-color:rgba(224,48,64,.3)">FTA ↗</a>
+  <div id="conn"><div class="dot" id="sdot"></div><span id="stxt">connecting</span></div>
+</header>
+<div id="err-banner">API unreachable — check backend is running</div>
+
+<div class="main">
+
+  <div class="symptom-panel">
+    <div class="ph">
+      Report a symptom
+      <span id="hdr-pending-count" style="display:none;background:var(--red2);color:var(--red);font-size:9px;padding:1px 6px;border-radius:2px;margin-left:6px;font-family:var(--mono);font-weight:normal;letter-spacing:0;text-transform:none;"></span>
+    </div>
+    <div class="symptom-scroll" id="symptom-list">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:12px 6px;">Loading…</div>
+    </div>
+  </div>
+
+  <div class="diag-panel">
+    <div class="ph" id="diag-ph">Diagnostic Engine</div>
+    <div class="diag-scroll" id="diag-content">
+      <div class="empty">
+        <div class="empty-icon">⟳</div>
+        <div class="empty-text">Select a symptom from the left<br>to begin diagnosis</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div class="fl">API</div>
+  <input type="text" class="fi" id="api-url" value="http://localhost:8000" onchange="refresh()">
+  <div id="f-status">—</div>
+</footer>
+
+<script>
+let symptoms = [];
+let activeSymptomId = null;
+let currentAnalysis = null;
+let pendingSuggestions = {};  // symptom_id → suggestion object
+let pendingPollId = null;
+
+function base(){ return document.getElementById("api-url").value.replace(/\/$/,""); }
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+async function init(){
+  try {
+    const data = await fetch(base()+"/diagnose/symptoms").then(r=>{ if(!r.ok) throw Error(r.status); return r.json(); });
+    symptoms = data.symptoms || [];
+    setConn(true);
+    document.getElementById("f-status").textContent = symptoms.length+" symptoms available";
+    // Fetch pending first so suggested symptoms appear on initial render
+    await fetchPending();
+    if (pendingPollId) clearInterval(pendingPollId);
+    pendingPollId = setInterval(fetchPending, 8000);
+  } catch(e) {
+    setConn(false);
+    document.getElementById("err-banner").style.display = "block";
+  }
+}
+
+function setConn(ok){
+  document.getElementById("sdot").className = "dot"+(ok?" on":"");
+  document.getElementById("stxt").textContent = ok?"live":"offline";
+  if(ok) document.getElementById("err-banner").style.display = "none";
+}
+
+// ── Pending suggestions ───────────────────────────────────────────────────────
+async function fetchPending() {
+  try {
+    const result = await fetch(base() + "/diagnose/pending").then(r => r.json());
+    pendingSuggestions = {};
+    (result.suggestions || []).forEach(s => { pendingSuggestions[s.symptom_id] = s; });
+    const count = Object.keys(pendingSuggestions).length;
+    // Update header badge
+    const badge = document.getElementById("hdr-pending-count");
+    if (badge) {
+      badge.textContent = count > 0 ? count+" suggested" : "";
+      badge.style.display = count > 0 ? "inline" : "none";
+    }
+    renderSymptomList();
+  } catch(e) { /* silent — don't break if backend has no findings yet */ }
+}
+
+// ── Symptom list ──────────────────────────────────────────────────────────────
+const CATEGORIES = {
+  thermal:"Thermal", pressure:"Pressure", separator:"Separator / Oil",
+  oil:"Oil Circuit", mechanical:"Mechanical", filter:"Filter",
+};
+
+function renderSymptomList(){
+  const el = document.getElementById("symptom-list");
+  const suggested = Object.values(pendingSuggestions);
+  const suggestedIds = new Set(Object.keys(pendingSuggestions));
+
+  let html = "";
+  const URGENCY_LABEL = {immediate:"IMMEDIATE", action:"ACTION", monitor:"MONITOR"};
+
+  // ── Suggested section ──
+  if (suggested.length > 0) {
+    // Sort by urgency: immediate first
+    suggested.sort((a,b) => ({immediate:0,action:1,monitor:2}[a.urgency]||9) - ({immediate:0,action:1,monitor:2}[b.urgency]||9));
+    html += `<div class="pending-hdr">Suggested <span class="pending-hdr-count">${suggested.length}</span></div>`;
+    suggested.forEach(sug => {
+      const s = symptoms.find(x => x.id === sug.symptom_id);
+      if (!s) return;
+      const active = s.id === activeSymptomId ? " active" : "";
+      const cls = active ? "" : " suggested-" + sug.urgency;
+      html += `<button class="symptom-btn${active}${cls}" onclick="selectSymptom('${s.id}')">
+        <span class="s-id">${s.id}</span>
+        <span style="flex:1;min-width:0">
+          <div class="s-badge badge-${sug.urgency}">${URGENCY_LABEL[sug.urgency]||sug.urgency}</div>
+          <div class="s-label">${s.label}</div>
+          <div class="s-hint">${sug.reason}</div>
+        </span>
+      </button>`;
+    });
+  }
+
+  // ── Other symptoms ──
+  const remaining = symptoms.filter(s => !suggestedIds.has(s.id));
+  if (remaining.length > 0) {
+    if (suggested.length > 0) {
+      html += `<div class="other-hdr">Other symptoms</div>`;
+    }
+    const byCategory = {};
+    remaining.forEach(s => {
+      const cat = s.category || "other";
+      if(!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(s);
+    });
+    Object.entries(byCategory).forEach(([cat, items]) => {
+      if (suggested.length === 0) html += `<div class="cat-label">${CATEGORIES[cat]||cat}</div>`;
+      items.forEach(s => {
+        const active = s.id === activeSymptomId ? " active" : "";
+        html += `<button class="symptom-btn${active}" onclick="selectSymptom('${s.id}')">
+          <span class="s-id">${s.id}</span>
+          <span>
+            <div class="s-label">${s.label}</div>
+            <div class="s-desc">${s.description}</div>
+          </span>
+        </button>`;
+      });
+    });
+  }
+
+  el.innerHTML = html || `<div style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:12px 6px;">Loading...</div>`;
+}
+
+// ── Select & analyse symptom ──────────────────────────────────────────────────
+async function selectSymptom(id){
+  activeSymptomId = id;
+  currentAnalysis = null;
+  renderSymptomList();
+  document.getElementById("diag-ph").textContent = "Analysing…";
+  document.getElementById("diag-content").innerHTML = `<div class="loading"><div class="spinner"></div> Checking live sensor data…</div>`;
+
+  try {
+    const analysis = await fetch(base()+`/diagnose/symptoms/${id}`).then(r=>{ if(!r.ok) throw Error(r.status); return r.json(); });
+    if(analysis.error){
+      document.getElementById("diag-content").innerHTML = `<div class="empty"><div class="empty-text">${analysis.error}</div></div>`;
+      return;
+    }
+    currentAnalysis = analysis;
+    const sym = symptoms.find(s=>s.id===id);
+    document.getElementById("diag-ph").textContent = sym?.label || "Diagnosis";
+    renderAnalysis(analysis);
+  } catch(e) {
+    document.getElementById("diag-content").innerHTML = `<div class="empty"><div class="empty-text" style="color:var(--red)">Failed to analyse — ${e.message}</div></div>`;
+  }
+}
+
+// ── Render analysis ───────────────────────────────────────────────────────────
+function renderAnalysis(a){
+  const ev = a.sensor_evidence || {};
+  const evItems = [
+    ["T1", ev.T1_c+"°C"], ["T2", ev.T2_c+"°C"], ["T1–T2 Δ", ev.T1_T2_delta_c+"°C"],
+    ["P1", ev.P1_bar+" bar"], ["P2", ev.P2_bar+" bar"], ["P3", ev.P3_bar+" bar"],
+    ["P4–P3 Δ", ev.P4_P3_delta_bar+" bar"], ["PSW1", ev.PSW1_mbar+" mbar"],
+    ["Load", ev.load_pct+"%"], ["Filter", ev.fluid_filter_health+"%"],
+    ["Separator", ev.separator_health+"%"], ["Thermal valve", ev.thermal_valve_health+"%"],
+  ].filter(([,v]) => v && !v.startsWith("undefined"));
+
+  const evHtml = evItems.map(([k,v]) => `<div class="ev-item"><span class="ev-key">${k}</span><span class="ev-val">${v}</span></div>`).join("");
+  const answersHtml = (a.answers||[]).map((ans,i) =>
+    `<button class="answer-btn" onclick="submitAnswer(${i})" id="ans-${i}"><span class="answer-letter">${String.fromCharCode(65+i)}.</span>${ans.label}</button>`
+  ).join("");
+
+  document.getElementById("diag-content").innerHTML = `
+    <div class="step">
+      <div class="hyp-card">
+        <div class="hyp-header">
+          <span class="step-label">Most likely cause</span>
+          <span class="conf-chip conf-${a.confidence}">${a.confidence}</span>
+        </div>
+        <div class="hyp-label">${a.primary_hypothesis_label}</div>
+      </div>
+      <div class="evidence">
+        <div class="ev-title">Live sensor evidence</div>
+        <div class="ev-grid">${evHtml}</div>
+      </div>
+      <div class="q-card">
+        <div class="q-step-label">Confirmatory check</div>
+        <div class="q-text">${a.confirmatory_question}</div>
+        <div class="q-context">${a.question_context}</div>
+      </div>
+      ${answersHtml}
+    </div>`;
+}
+
+// ── Submit answer ─────────────────────────────────────────────────────────────
+async function submitAnswer(index){
+  document.querySelectorAll(".answer-btn").forEach(b => b.disabled = true);
+  const btn = document.getElementById("ans-"+index);
+  if(btn) btn.style.borderColor = "var(--cyan)";
+
+  try {
+    const result = await fetch(base()+`/diagnose/symptoms/${activeSymptomId}/answer`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({answer_index: index})
+    }).then(r=>r.json());
+    renderDiagnosis(result);
+  } catch(e) {
+    const step = document.querySelector(".step");
+    if(step) step.insertAdjacentHTML("beforeend", `<div style="color:var(--red);font-family:var(--mono);font-size:11px;margin-top:12px">Error: ${e.message}</div>`);
+  }
+}
+
+// ── Render diagnosis ──────────────────────────────────────────────────────────
+function renderDiagnosis(r){
+  const urgency = r.urgency || "monitor";
+  const urgencyLabels = {immediate:"IMMEDIATE ACTION", within_7_days:"WITHIN 7 DAYS", within_14_days:"WITHIN 14 DAYS", monitor:"MONITOR"};
+  const ftaLink = r.fta_node ? `<a href="${getFtaHref(r.fta_node)}" class="fta-link-btn">View in Fault Tree ↗</a>` : "";
+
+  const diagBlock = `
+    <div class="diagnosis-card urgency-${urgency}" id="diagnosis-result">
+      <div class="diag-header">
+        <span class="diag-label">Diagnosis</span>
+        <span class="urgency-badge">${urgencyLabels[urgency]||urgency}</span>
+      </div>
+      <div class="diag-text">${r.diagnosis}</div>
+      <div class="action-box">
+        <div class="action-label">Recommended action</div>
+        <div class="action-text">${r.action}</div>
+      </div>
+      ${ftaLink}
+    </div>
+    <button class="reset-btn" onclick="resetDiagnosis()">↺ Start new diagnosis</button>`;
+
+  const step = document.querySelector(".step");
+  if(step){
+    document.querySelectorAll(".answer-btn").forEach(b => b.remove());
+    step.insertAdjacentHTML("beforeend", diagBlock);
+    document.getElementById("diagnosis-result")?.scrollIntoView({behavior:"smooth", block:"nearest"});
+  }
+}
+
+function resetDiagnosis(){
+  activeSymptomId = null;
+  currentAnalysis = null;
+  fetchPending();
+  document.getElementById("diag-ph").textContent = "Diagnostic Engine";
+  document.getElementById("diag-content").innerHTML = `
+    <div class="empty">
+      <div class="empty-icon">⟳</div>
+      <div class="empty-text">Select a symptom from the left<br>to begin diagnosis</div>
+    </div>`;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getFtaHref(nodeId){
+  const apiVal = document.getElementById("api-url").value;
+  const suffix = apiVal && apiVal !== "http://localhost:8000" ? `&api=${encodeURIComponent(apiVal)}` : "";
+  return `fta.html?highlight=${nodeId}${suffix}`;
+}
+
+function applyUrlParams(){
+  const p = new URLSearchParams(window.location.search);
+  if(p.has("api")) document.getElementById("api-url").value = p.get("api");
+  const apiVal = document.getElementById("api-url").value;
+  const suffix = apiVal && apiVal !== "http://localhost:8000" ? `?api=${encodeURIComponent(apiVal)}` : "";
+  document.getElementById("monitor-link").href = "monitor.html" + suffix;
+  document.getElementById("fta-link").href = "fta.html" + suffix;
+}
+
+function refresh(){ init(); }
+document.getElementById("api-url").addEventListener("change", function(){
+  const suffix = this.value && this.value !== "http://localhost:8000" ? `?api=${encodeURIComponent(this.value)}` : "";
+  document.getElementById("monitor-link").href = "monitor.html" + suffix;
+  document.getElementById("fta-link").href = "fta.html" + suffix;
+  refresh();
+});
+
+applyUrlParams();
+init();
+</script>
+</body>
+</html>

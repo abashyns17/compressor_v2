@@ -1,17 +1,12 @@
 """
 FastAPI application entry point — Sullair LS110 Compressor Backend
-
-Run with:
-    uvicorn api.main:app --reload --port 8000
-
-Swagger UI: http://localhost:8000/docs
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from api.routes import state, scenarios, inject, analysis, predict, logs
+from api.routes import state, scenarios, inject, analysis, predict, logs, diagnose
 from simulation.scenario_engine import build_scenario
 
 import api.routes.state as state_module
@@ -19,7 +14,6 @@ import api.routes.state as state_module
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load a normal scenario on startup so the API is immediately usable
     initial_state = build_scenario("normal")
     state_module.set_state(initial_state)
     print("Sullair LS110 backend started — normal scenario loaded")
@@ -33,14 +27,12 @@ app = FastAPI(
     title="Sullair LS110 — ProActive Agents Backend",
     description=(
         "Physics-informed digital twin simulation for the Sullair LS110 "
-        "rotary screw air compressor. Provides sensor emulation, fault injection, "
-        "forward projection, and cross-correlation analysis."
+        "rotary screw air compressor."
     ),
     version="0.1.0",
     lifespan=lifespan,
 )
 
-# Allow all origins for local development / AI Studio integration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,13 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routes
 app.include_router(state.router)
 app.include_router(scenarios.router)
 app.include_router(inject.router)
 app.include_router(analysis.router)
 app.include_router(predict.router)
 app.include_router(logs.router)
+app.include_router(diagnose.router)
 
 
 @app.get("/")
@@ -71,5 +63,6 @@ def root():
             "analysis":  "/analysis/       — correlations, trends, risk assessment",
             "predict":   "/predict/        — forward projection and what-if scenarios",
             "logs":      "/logs/           — sensor history for graph generation",
+            "diagnose":  "/diagnose/       — symptom-driven diagnostic engine",
         },
     }
