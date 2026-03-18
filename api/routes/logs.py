@@ -1,10 +1,10 @@
 """
-Logs routes — sensor history and fault events for graph generation.
+Logs routes — sensor history, fault events, and event log.
 """
 
 from fastapi import APIRouter, Query
 from typing import Optional
-from data.sensor_logger import get_recent_readings, get_sensor_trend, get_fault_history
+from data.sensor_logger import get_recent_readings, get_sensor_trend, get_fault_history, get_event_log
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -16,6 +16,31 @@ def get_readings(
 ):
     """Recent sensor readings. Primary data source for AI Studio graphs."""
     return {"readings": get_recent_readings(limit, scenario)}
+
+
+@router.get("/events")
+def get_events(limit: int = Query(100, ge=1, le=1000)):
+    """
+    Persistent event log — scenario loads, fault injections, finding changes.
+    This is the backend-owned version of the frontend event journal.
+    Newest entries first.
+
+    Event types: LOAD | FAULT | INJECT | CLEAR
+
+    Response shape:
+    {
+      "events": [
+        {
+          "id": 42,
+          "timestamp": "2026-03-18T21:52:00.000000+00:00",
+          "event_type": "FAULT",
+          "message": "CORR_004 · ACTION · T1_above_model_action"
+        },
+        ...
+      ]
+    }
+    """
+    return {"events": get_event_log(limit)}
 
 
 @router.get("/trend/{sensor}")

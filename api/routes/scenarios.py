@@ -7,6 +7,7 @@ from api.models import ScenarioRequest, AdvanceTimeRequest, OperatingConditionsR
 from simulation.scenario_engine import build_scenario, list_scenarios, DEMO_NARRATIVES
 from api.routes.state import set_state, _state
 import api.routes.state as state_module
+from data.sensor_logger import log_event
 
 router = APIRouter(prefix="/scenarios", tags=["scenarios"])
 
@@ -26,13 +27,12 @@ def load_scenario(req: ScenarioRequest):
 
     state_module._state = new_state
     set_state(new_state)
+    log_event("LOAD", f"Scenario loaded: {req.name}")
 
     result = {
         "loaded": req.name,
         "summary": new_state.summary(),
     }
-
-    # Attach narrative context if this is a demo scenario
     if req.name in DEMO_NARRATIVES:
         result["narrative"] = DEMO_NARRATIVES[req.name]
 
@@ -52,6 +52,7 @@ def advance_time(req: AdvanceTimeRequest):
     summary = state_module._state.summary()
     log_reading(reading.to_dict(), scenario="active")
     log_components(summary["component_health"], scenario="active")
+    log_event("LOAD", f"Advanced {req.hours:.0f}h — total {state_module._state.total_hours:.0f}h")
 
     return {
         "advanced_hours": req.hours,
@@ -82,6 +83,12 @@ def set_conditions(req: OperatingConditionsRequest):
         state_module._state.ambient_f = req.ambient_f
     if req.setpoint_psi is not None:
         state_module._state.setpoint_psi = req.setpoint_psi
+
+    parts = []
+    if req.load_pct is not None: parts.append(f"load={req.load_pct:.0f}%")
+    if req.ambient_f is not None: parts.append(f"ambient={req.ambient_f:.0f}°F")
+    if req.setpoint_psi is not None: parts.append(f"setpoint={req.setpoint_psi:.0f}psi")
+    log_event("LOAD", "Conditions updated: " + ", ".join(parts))
 
     return {
         "conditions_updated": True,
@@ -119,7 +126,6 @@ def load_demo(body: dict):
     """
     Load a demo narrative scenario.
     Body: { "demo": "demo_overdue_service" }
-    Returns full narrative context + machine state.
     """
     demo_id = body.get("demo")
     if not demo_id:
@@ -140,6 +146,7 @@ def load_demo(body: dict):
     set_state(new_state)
 
     narrative = DEMO_NARRATIVES[demo_id]
+    log_event("LOAD", f"Demo loaded: {narrative['title']}")
 
     return {
         "loaded": demo_id,

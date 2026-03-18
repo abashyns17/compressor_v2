@@ -68,6 +68,14 @@ def init_db():
                 message     TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS event_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp   TEXT NOT NULL,
+                event_type  TEXT NOT NULL,
+                message     TEXT NOT NULL
+            )
+        """)
         conn.commit()
 
 
@@ -118,6 +126,34 @@ def log_fault(fault: dict, scenario: str = "normal"):
             fault.get("message", ""),
         ))
         conn.commit()
+
+
+def log_event(event_type: str, message: str):
+    """
+    Append an entry to the persistent event log.
+
+    event_type values:
+      LOAD    — scenario loaded, time advanced, API connected
+      FAULT   — correlation finding fired or changed severity
+      INJECT  — fault injected
+      CLEAR   — findings cleared or faults reset
+    """
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO event_log (timestamp, event_type, message) VALUES (?, ?, ?)",
+            (datetime.now(timezone.utc).isoformat(), event_type, message),
+        )
+        conn.commit()
+
+
+def get_event_log(limit: int = 100) -> list:
+    """Fetch most recent event log entries, newest first."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM event_log ORDER BY timestamp DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def get_recent_readings(limit: int = 100,
