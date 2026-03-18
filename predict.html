@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LS110 — Scenario Projection</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:     #0a0c0f;
+    --bg1:    #0f1318;
+    --bg2:    #141920;
+    --bg3:    #1a2028;
+    --border: #1e2730;
+    --bord2:  #253040;
+    --text:   #c8d4e0;
+    --text2:  #7a8fa0;
+    --text3:  #3d5060;
+    --green:  #1db87a;
+    --amber:  #e8a020;
+    --red:    #e03040;
+    --blue:   #2080e0;
+    --purple: #8060e0;
+    --cyan:   #18b8c8;
+    --red2:   #701018;
+    --amb2:   #7a5010;
+    --blu2:   #0f3870;
+    --mono:   Consolas,'JetBrains Mono','Fira Code','Courier New',monospace;
+    --sans:   -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; overflow:hidden; }
+  body {
+    background:var(--bg); color:var(--text);
+    font-family:var(--sans); font-size:15px;
+    display:flex; flex-direction:column;
+  }
+
+  header {
+    background:var(--bg1); border-bottom:1px solid var(--border);
+    padding:0 18px; height:54px;
+    display:flex; align-items:center; gap:14px; flex-shrink:0;
+  }
+  .logo { font-family:var(--mono); font-size:13px; color:var(--text2); letter-spacing:.12em; text-transform:uppercase; }
+  .logo span { color:var(--purple); }
+  .chip {
+    font-family:var(--mono); font-size:13px; color:var(--text);
+    background:var(--bg2); border:1px solid var(--bord2);
+    padding:3px 10px; border-radius:3px;
+  }
+  .chip.purple { color:var(--purple); background:rgba(128,96,224,.07); border-color:rgba(128,96,224,.25); }
+  .chip.amber  { color:var(--amber);  background:rgba(232,160,32,.07);  border-color:rgba(232,160,32,.2); }
+
+  .nav-link {
+    font-family:var(--mono); font-size:11px; color:var(--text3);
+    text-decoration:none; padding:4px 10px; border:1px solid var(--border);
+    border-radius:3px; transition:color .15s, border-color .15s;
+    display:flex; align-items:center; gap:5px;
+  }
+  .nav-link:hover { color:var(--text2); border-color:var(--bord2); }
+
+  #conn { margin-left:auto; font-family:var(--mono); font-size:12px; display:flex; align-items:center; gap:6px; }
+  .dot { width:6px; height:6px; border-radius:50%; background:var(--red); animation:pulse 2s infinite; }
+  .dot.on { background:var(--green); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .main { flex:1; display:grid; grid-template-columns: 320px 1fr; overflow:hidden; }
+
+  .config-panel {
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden;
+    background:var(--bg1);
+  }
+  .ph {
+    border-bottom:1px solid var(--border);
+    padding:8px 14px; font-family:var(--mono); font-size:10px;
+    color:var(--text3); letter-spacing:.12em; text-transform:uppercase; flex-shrink:0;
+  }
+  .config-scroll {
+    flex:1; overflow-y:auto; padding:14px;
+    scrollbar-width:thin; scrollbar-color:var(--bord2) transparent;
+  }
+
+  .section-lbl {
+    font-family:var(--mono); font-size:9px; color:var(--text3);
+    letter-spacing:.14em; text-transform:uppercase;
+    margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--border);
+  }
+  .section-lbl:first-child { margin-top:0; }
+
+  .field { margin-bottom:10px; }
+  .field-label {
+    font-family:var(--mono); font-size:10px; color:var(--text2);
+    margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;
+  }
+  .field-hint { font-size:9px; color:var(--text3); }
+
+  input[type=range] {
+    width:100%; height:3px; -webkit-appearance:none;
+    background:var(--border); border-radius:2px; outline:none; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    border-radius:50%; background:var(--purple); cursor:pointer;
+  }
+  input[type=number], select, input[type=text] {
+    width:100%; background:var(--bg2); border:1px solid var(--bord2);
+    color:var(--text); font-family:var(--mono); font-size:12px;
+    padding:6px 10px; border-radius:3px; outline:none; transition:border-color .15s;
+  }
+  input[type=number]:focus, select:focus { border-color:var(--purple); }
+
+  .range-row { display:flex; align-items:center; gap:8px; }
+  .range-val { font-family:var(--mono); font-size:12px; color:var(--purple); min-width:52px; text-align:right; flex-shrink:0; }
+
+  .defer-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  .defer-name { font-family:var(--mono); font-size:11px; color:var(--text2); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .defer-input { width:70px !important; text-align:right; padding:4px 8px !important; font-size:11px !important; }
+  .defer-unit { font-family:var(--mono); font-size:9px; color:var(--text3); flex-shrink:0; width:20px; }
+
+  .compare-card { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:10px; margin-bottom:8px; }
+  .compare-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .compare-label {
+    font-family:var(--mono); font-size:11px; color:var(--text);
+    background:transparent; border:1px solid var(--bord2);
+    padding:3px 8px; border-radius:3px; width:120px;
+  }
+  .compare-label:focus { border-color:var(--purple); outline:none; }
+  .remove-btn { font-family:var(--mono); font-size:10px; color:var(--text3); background:none; border:none; cursor:pointer; padding:2px 6px; border-radius:2px; transition:color .15s; }
+  .remove-btn:hover { color:var(--red); }
+
+  .mode-tabs { display:flex; gap:4px; margin-bottom:14px; }
+  .mode-tab {
+    flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.08em;
+    text-transform:uppercase; padding:7px 4px; text-align:center;
+    background:var(--bg2); border:1px solid var(--border); border-radius:3px;
+    cursor:pointer; color:var(--text3); transition:all .15s;
+  }
+  .mode-tab.active { background:rgba(128,96,224,.12); border-color:rgba(128,96,224,.35); color:var(--purple); }
+
+  .run-btn {
+    width:100%; padding:12px; margin-top:14px;
+    background:rgba(128,96,224,.15); border:1px solid rgba(128,96,224,.4);
+    color:var(--purple); font-family:var(--mono); font-size:13px;
+    letter-spacing:.06em; border-radius:4px; cursor:pointer; transition:all .2s; text-transform:uppercase;
+  }
+  .run-btn:hover { background:rgba(128,96,224,.25); border-color:rgba(128,96,224,.6); }
+  .run-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .run-btn.running { color:var(--amber); border-color:rgba(232,160,32,.4); background:rgba(232,160,32,.08); }
+
+  .results-panel { display:flex; flex-direction:column; overflow:hidden; }
+  .results-scroll { flex:1; overflow-y:auto; padding:16px; scrollbar-width:thin; scrollbar-color:var(--bord2) transparent; }
+
+  .empty-state {
+    height:100%; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:12px;
+    color:var(--text3); font-family:var(--mono); font-size:12px;
+  }
+  .empty-icon { font-size:40px; opacity:.3; }
+  .empty-hint { font-size:10px; letter-spacing:.1em; text-transform:uppercase; }
+
+  .timeline-row { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:10px; }
+  .tcard { background:var(--bg1); border:1px solid var(--border); border-radius:4px; padding:12px 14px; }
+  .tcard.warn  { border-color:var(--amb2); background:rgba(232,160,32,.04); }
+  .tcard.fault { border-color:#3a1820; background:rgba(224,48,64,.05); }
+  .tcard.ok    { border-color:#0f6e48; background:rgba(29,184,122,.04); }
+  .tcard-label { font-family:var(--mono); font-size:9px; color:var(--text3); letter-spacing:.12em; text-transform:uppercase; margin-bottom:6px; }
+  .tcard-value { font-family:var(--mono); font-size:22px; font-weight:700; line-height:1; }
+  .tcard-value.ok    { color:var(--green); }
+  .tcard-value.warn  { color:var(--amber); }
+  .tcard-value.fault { color:var(--red); }
+  .tcard-sub { font-family:var(--mono); font-size:10px; color:var(--text3); margin-top:4px; }
+
+  .risk-box {
+    background:var(--bg2); border:1px solid var(--bord2); border-radius:4px;
+    padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; color:var(--text);
+    border-left:3px solid var(--purple);
+  }
+
+  .chart-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; }
+  .proj-chart-card {
+    background:var(--bg1); border:1px solid var(--border); border-radius:4px;
+    padding:10px 12px; height:160px; display:flex; flex-direction:column;
+  }
+  .chart-title { font-family:var(--mono); font-size:10px; color:var(--text3); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; flex-shrink:0; }
+  .chart-wrap { flex:1; min-height:0; position:relative; }
+
+  .mitigation {
+    background:var(--bg2); border:1px solid var(--border); border-radius:4px;
+    padding:10px 14px; margin-bottom:8px;
+    display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:start;
+  }
+  .mit-urgency { font-family:var(--mono); font-size:9px; padding:3px 7px; border-radius:2px; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; margin-top:2px; }
+  .mit-urgency.immediate     { background:var(--red2); color:var(--red); }
+  .mit-urgency.within_7_days { background:var(--amb2); color:var(--amber); }
+  .mit-urgency.within_14_days{ background:#1a2800; color:#80c040; }
+  .mit-urgency.prerequisite  { background:var(--blu2); color:#80b0ff; }
+  .mit-action { font-size:13px; color:var(--text); margin-bottom:3px; font-weight:500; }
+  .mit-reason { font-size:11px; color:var(--text2); line-height:1.4; }
+  .mit-impact { font-size:11px; color:var(--text3); font-style:italic; margin-top:3px; }
+  .mit-part { font-family:var(--mono); font-size:10px; color:var(--text3); white-space:nowrap; padding:2px 6px; background:var(--bg3); border-radius:2px; margin-top:2px; }
+
+  .compare-results-grid { display:grid; gap:10px; margin-bottom:14px; }
+  .compare-result-card { background:var(--bg1); border:1px solid var(--border); border-radius:4px; padding:12px 14px; }
+  .compare-result-card.best { border-color:var(--green); }
+  .compare-result-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .compare-result-label { font-family:var(--mono); font-size:13px; color:var(--text); font-weight:600; }
+  .best-badge { font-family:var(--mono); font-size:9px; color:var(--green); background:rgba(29,184,122,.12); border:1px solid rgba(29,184,122,.3); padding:2px 8px; border-radius:2px; letter-spacing:.08em; }
+  .compare-timeline { display:flex; gap:10px; }
+  .compare-titem { flex:1; }
+  .compare-titem-label { font-family:var(--mono); font-size:8px; color:var(--text3); letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px; }
+
+  .fault-banner { background:rgba(224,48,64,.1); border:1px solid rgba(224,48,64,.3); border-left:3px solid var(--red); border-radius:4px; padding:10px 14px; margin-bottom:12px; }
+  .fault-banner-title { font-family:var(--mono); font-size:10px; color:var(--red); letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; display:flex; align-items:center; gap:8px; }
+  .fault-banner-title .pulse-dot { width:7px; height:7px; border-radius:50%; background:var(--red); animation:pulse 1s infinite; }
+  .fault-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .fault-code { font-family:var(--mono); font-size:10px; color:var(--red); background:var(--red2); padding:2px 6px; border-radius:2px; }
+  .fault-val { font-family:var(--mono); font-size:11px; color:var(--text2); }
+  .warn-banner { background:rgba(232,160,32,.08); border:1px solid rgba(232,160,32,.25); border-left:3px solid var(--amber); border-radius:4px; padding:10px 14px; margin-bottom:12px; font-family:var(--mono); font-size:11px; color:var(--amber); }
+  .recommendation { background:rgba(29,184,122,.06); border:1px solid rgba(29,184,122,.2); border-radius:4px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:var(--text); font-family:var(--mono); }
+  .result-section-header { font-family:var(--mono); font-size:9px; color:var(--text3); letter-spacing:.14em; text-transform:uppercase; margin:16px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+
+  footer { background:var(--bg1); border-top:1px solid var(--border); padding:7px 14px; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .fl { font-family:var(--mono); font-size:9px; color:var(--text3); letter-spacing:.1em; text-transform:uppercase; }
+  #units-btn { font-family:var(--mono); font-size:10px; padding:4px 10px; background:var(--bg2); border:1px solid var(--bord2); border-radius:3px; color:var(--cyan); cursor:pointer; transition:all .15s; }
+  #units-btn:hover { border-color:var(--cyan); }
+  #f-status { margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text3); }
+  input[type=text].footer-input { background:var(--bg2); border:1px solid var(--bord2); color:var(--text2); font-family:var(--mono); font-size:11px; padding:4px 8px; border-radius:3px; outline:none; width:200px; }
+
+  .config-scroll::-webkit-scrollbar, .results-scroll::-webkit-scrollbar { width:4px; }
+  .config-scroll::-webkit-scrollbar-track, .results-scroll::-webkit-scrollbar-track { background:transparent; }
+  .config-scroll::-webkit-scrollbar-thumb, .results-scroll::-webkit-scrollbar-thumb { background:var(--bord2); border-radius:2px; }
+
+  #err-banner { display:none; background:rgba(224,48,64,.1); border-bottom:1px solid var(--red2); padding:3px 14px; font-family:var(--mono); font-size:11px; color:var(--red); flex-shrink:0; }
+  .add-scenario-btn { width:100%; padding:7px; margin-top:4px; background:transparent; border:1px dashed var(--bord2); color:var(--text3); font-family:var(--mono); font-size:10px; border-radius:3px; cursor:pointer; transition:all .15s; letter-spacing:.06em; }
+  .add-scenario-btn:hover { border-color:var(--purple); color:var(--purple); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">ProActive <span>PREDICT</span></div>
+  <div class="chip">Sullair LS110</div>
+  <div class="chip purple" id="machine-state-chip">no state</div>
+  <a class="nav-link" href="monitor.html" id="monitor-link"><span>←</span> Monitor</a>
+  <div id="conn"><div class="dot" id="sdot"></div><span id="stxt">connecting</span></div>
+</header>
+<div id="err-banner">API unreachable — check backend is running</div>
+
+<div class="main">
+  <div class="config-panel">
+    <div class="ph">Projection Config</div>
+    <div class="config-scroll">
+
+      <div class="section-lbl">Mode</div>
+      <div class="mode-tabs">
+        <div class="mode-tab active" id="tab-project" onclick="setMode('project')">Project</div>
+        <div class="mode-tab" id="tab-compare" onclick="setMode('compare')">Compare</div>
+      </div>
+
+      <div id="mode-project">
+        <div class="section-lbl">Projection Window</div>
+        <div class="field">
+          <div class="field-label">Days ahead <span class="field-hint">how far to simulate</span></div>
+          <div class="range-row">
+            <input type="range" id="proj-days" min="1" max="180" value="30"
+                   oninput="document.getElementById('proj-days-val').textContent=this.value+' days'">
+            <div class="range-val" id="proj-days-val">30 days</div>
+          </div>
+        </div>
+
+        <div class="section-lbl">Operating Conditions Override</div>
+        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px">
+          Leave blank to use current machine state. Override to test "what if" conditions.
+        </div>
+        <div class="field">
+          <div class="field-label">Load % <span class="field-hint">current</span></div>
+          <div class="range-row">
+            <input type="range" id="proj-load" min="0" max="100" value="0" oninput="onLoadChange(this.value)">
+            <div class="range-val" id="proj-load-val" style="color:var(--text3)">current</div>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Ambient °C <span class="field-hint">current</span></div>
+          <div class="range-row">
+            <input type="range" id="proj-amb" min="0" max="45" value="0" oninput="onAmbChange(this.value)">
+            <div class="range-val" id="proj-amb-val" style="color:var(--text3)">current</div>
+          </div>
+        </div>
+
+        <div class="section-lbl">Defer Services</div>
+        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px">
+          Days to delay servicing each component. Higher = more degradation = faults arrive sooner.
+        </div>
+        <div id="defer-rows"></div>
+      </div>
+
+      <div id="mode-compare" style="display:none">
+        <div class="section-lbl">Projection Window</div>
+        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:8px">
+          All scenarios run over the same window — results are directly comparable.
+        </div>
+        <div class="field">
+          <div class="field-label">Days ahead <span class="field-hint">shared across all scenarios</span></div>
+          <div class="range-row">
+            <input type="range" id="cmp-days" min="1" max="180" value="30"
+                   oninput="document.getElementById('cmp-days-val').textContent=this.value+' days'">
+            <div class="range-val" id="cmp-days-val">30 days</div>
+          </div>
+        </div>
+        <div class="section-lbl">Scenarios to Compare</div>
+        <div id="compare-cards"></div>
+        <button class="add-scenario-btn" onclick="addCompareScenario()">+ Add scenario</button>
+      </div>
+
+      <button class="run-btn" id="run-btn" onclick="runProjection()">▶ Run Projection</button>
+    </div>
+  </div>
+
+  <div class="results-panel">
+    <div class="ph" id="results-ph">Results <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-size:10px">— run a projection to see output</span></div>
+    <div class="results-scroll" id="results-scroll">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">⟳</div>
+        <div style="color:var(--text2);font-size:13px">Configure and run a projection</div>
+        <div class="empty-hint">Project mode: single what-if scenario with trajectories</div>
+        <div class="empty-hint">Compare mode: multiple scenarios, same time window</div>
+      </div>
+      <div id="results-content" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="fl">API</div>
+  <input type="text" class="footer-input" id="api-url" value="http://localhost:8000" onchange="fetchMachineState()">
+  <button id="units-btn" onclick="toggleUnits()">metric</button>
+  <div id="f-status">—</div>
+</footer>
+
+<script>
+let metric = true, mode = "project", machineState = null, compareScenarios = [], projectionCharts = {};
+
+const COMPONENTS = [
+  "fluid_filter","separator_element","inlet_filter","thermal_valve","oil_cooler",
+  "shaft_seal","coupling_element","main_motor_bearing","solenoid_valve","blowdown_valve"
+];
+
+const U = {
+  tempVal:  f  => metric ? (f - 32) * 5/9 : f,
+  tempUnit: () => metric ? "°C" : "°F",
+  presVal:  p  => metric ? +(p * 0.0689476) : p,
+  presUnit: () => metric ? "bar" : "psi",
+  vacVal:   v  => metric ? +(v * 2.4884) : v,
+  vacUnit:  () => metric ? "mbar" : "in.wc",
+  ambToF:   c  => c * 9/5 + 32,
+};
+
+function toggleUnits() {
+  metric = !metric;
+  const btn = document.getElementById("units-btn");
+  btn.textContent = metric ? "metric" : "imperial";
+  btn.style.color = metric ? "var(--cyan)" : "var(--amber)";
+}
+
+function ambDisplay(f) { return metric ? ((f-32)*5/9).toFixed(0)+"°C" : f.toFixed(0)+"°F"; }
+
+function convertUnitsInTextToMetric(text) {
+  if (!text) return text;
+  if (metric) {
+    text = text.replace(/(-?\d+(?:\.\d+)?)\s*°F/g, (_,n)=>{ const c=(parseFloat(n)-32)*5/9; return c.toFixed(Math.abs(c)<10?1:0)+'°C'; });
+    text = text.replace(/(-?\d+(?:\.\d+)?)\s*psi/g, (_,n)=>{ return (parseFloat(n)*0.0689476).toFixed(2)+' bar'; });
+  }
+  return text;
+}
+
+function base() { return document.getElementById("api-url").value.replace(/\/$/, ""); }
+
+async function apiFetch(path, method="GET", body=null) {
+  const opts = { method, headers:{"Content-Type":"application/json"} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(base()+path, opts);
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.json();
+}
+
+async function fetchMachineState() {
+  try {
+    machineState = await apiFetch("/state/");
+    setConn(true);
+    const c = machineState.operating_conditions || {};
+    document.getElementById("machine-state-chip").textContent = machineState.scenario_name || "loaded";
+    document.getElementById("f-status").textContent =
+      `${Math.round(machineState.total_hours||0).toLocaleString()} hrs · load ${c.load_pct?.toFixed(0)}% · amb ${ambDisplay(machineState.sensors?.ambient_f||68)}`;
+    buildDeferRows();
+  } catch(e) { setConn(false); document.getElementById("err-banner").style.display = "block"; }
+}
+
+function setConn(ok) {
+  document.getElementById("sdot").className = "dot"+(ok?" on":"");
+  document.getElementById("stxt").textContent = ok?"live":"offline";
+  if (ok) document.getElementById("err-banner").style.display = "none";
+}
+
+function buildDeferRows() {
+  const container = document.getElementById("defer-rows");
+  container.innerHTML = "";
+  COMPONENTS.forEach(id => {
+    const health = machineState?.component_health?.[id]?.health_pct;
+    const row = document.createElement("div");
+    row.className = "defer-row";
+    row.innerHTML = `
+      <div class="defer-name" title="${id}">${id.replace(/_/g," ")}${health!=null?` <span style="font-size:9px;color:${health<30?"var(--red)":health<70?"var(--amber)":"var(--text3)"}">(${health.toFixed(0)}%)</span>`:""}</div>
+      <input type="number" class="defer-input" id="defer-${id}" min="0" max="730" value="0" placeholder="0">
+      <div class="defer-unit">d</div>`;
+    container.appendChild(row);
+  });
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById("tab-project").className = "mode-tab"+(m==="project"?" active":"");
+  document.getElementById("tab-compare").className = "mode-tab"+(m==="compare"?" active":"");
+  document.getElementById("mode-project").style.display = m==="project" ? "block" : "none";
+  document.getElementById("mode-compare").style.display = m==="compare" ? "block" : "none";
+}
+
+let loadOverride = null, ambOverride = null;
+
+function onLoadChange(val) {
+  val = parseInt(val);
+  const el = document.getElementById("proj-load-val");
+  if (val === 0) { loadOverride = null; el.textContent = "current"; el.style.color = "var(--text3)"; }
+  else { loadOverride = val; el.textContent = val+"%"; el.style.color = "var(--purple)"; }
+}
+
+function onAmbChange(val) {
+  val = parseInt(val);
+  const el = document.getElementById("proj-amb-val");
+  if (val === 0) { ambOverride = null; el.textContent = "current"; el.style.color = "var(--text3)"; }
+  else { ambOverride = val; el.textContent = val+"°C"; el.style.color = "var(--purple)"; }
+}
+
+let scenarioCounter = 0;
+
+function addCompareScenario() {
+  const id = ++scenarioCounter;
+  compareScenarios.push({ id, label: `scenario_${id}` });
+  renderCompareCards();
+}
+
+function removeCompareScenario(id) {
+  compareScenarios = compareScenarios.filter(s => s.id !== id);
+  renderCompareCards();
+}
+
+function toggleDeferInput(id, compVal) {
+  const wrap = document.getElementById(`csc-defer-wrap-${id}`);
+  if (!wrap) return;
+  wrap.style.display = compVal ? "flex" : "none";
+  if (!compVal) { const inp = document.getElementById(`csc-defer-${id}`); if (inp) inp.value = ""; }
+}
+
+function renderCompareCards() {
+  const container = document.getElementById("compare-cards");
+  container.innerHTML = "";
+  compareScenarios.forEach(sc => {
+    const div = document.createElement("div");
+    div.className = "compare-card";
+    div.innerHTML = `
+      <div class="compare-card-header">
+        <input class="compare-label" type="text" value="${sc.label}" onchange="compareScenarios.find(s=>s.id===${sc.id}).label=this.value">
+        <button class="remove-btn" onclick="removeCompareScenario(${sc.id})">✕</button>
+      </div>
+      <div class="field">
+        <div class="field-label" style="font-size:9px">Load % <span style="color:var(--text3)">(blank = current)</span></div>
+        <input type="number" min="0" max="100" placeholder="current" id="csc-load-${sc.id}" style="padding:4px 8px;font-size:11px">
+      </div>
+      <div class="field">
+        <div class="field-label" style="font-size:9px">Ambient °C <span style="color:var(--text3)">(blank = current)</span></div>
+        <input type="number" min="0" max="45" placeholder="current" id="csc-amb-${sc.id}" style="padding:4px 8px;font-size:11px">
+      </div>
+      <div class="field">
+        <div class="field-label" style="font-size:9px">Defer one service <span style="color:var(--text3)">(optional — "what if we push this out?")</span></div>
+        <select id="csc-comp-${sc.id}" style="padding:4px 8px;font-size:11px;margin-bottom:4px" onchange="toggleDeferInput(${sc.id}, this.value)">
+          <option value="">— none —</option>
+          ${COMPONENTS.map(c=>`<option value="${c}">${c.replace(/_/g," ")}</option>`).join("")}
+        </select>
+        <div id="csc-defer-wrap-${sc.id}" style="display:none;gap:6px;align-items:center;margin-top:4px">
+          <span style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">delay by</span>
+          <input type="number" min="0" max="730" placeholder="days" id="csc-defer-${sc.id}" style="padding:4px 8px;font-size:11px;flex:1">
+          <span style="font-family:var(--mono);font-size:9px;color:var(--text3)">days</span>
+        </div>
+      </div>`;
+    container.appendChild(div);
+  });
+}
+
+async function runProjection() {
+  const btn = document.getElementById("run-btn");
+  btn.disabled = true; btn.className = "run-btn running"; btn.textContent = "⟳ Running...";
+  try {
+    const result = mode === "project" ? await runProjectMode() : await runCompareMode();
+    renderResults(result);
+  } catch(e) {
+    document.getElementById("results-content").innerHTML =
+      `<div style="font-family:var(--mono);font-size:12px;color:var(--red);padding:20px">Error: ${e.message}<br><br><span style="color:var(--text3)">Make sure a scenario is loaded on the monitor first.</span></div>`;
+    document.getElementById("empty-state").style.display = "none";
+    document.getElementById("results-content").style.display = "block";
+  }
+  btn.disabled = false; btn.className = "run-btn"; btn.textContent = "▶ Run Projection";
+}
+
+async function runProjectMode() {
+  const days = parseInt(document.getElementById("proj-days").value);
+  const body = { days };
+  if (loadOverride !== null) body.load_pct = loadOverride;
+  if (ambOverride !== null) body.ambient_f = U.ambToF(ambOverride);
+  const deferServices = {};
+  COMPONENTS.forEach(id => { const val = parseInt(document.getElementById(`defer-${id}`)?.value || "0"); if (val > 0) deferServices[id] = val; });
+  if (Object.keys(deferServices).length > 0) body.defer_services = deferServices;
+  const data = await apiFetch("/predict/project", "POST", body);
+  return { type: "project", data, days };
+}
+
+async function runCompareMode() {
+  if (compareScenarios.length === 0) throw new Error("Add at least one scenario to compare");
+  const days = parseInt(document.getElementById("cmp-days").value);
+  const scenarios = compareScenarios.map(sc => {
+    const obj = { label: sc.label };
+    const load = document.getElementById(`csc-load-${sc.id}`)?.value;
+    const amb  = document.getElementById(`csc-amb-${sc.id}`)?.value;
+    const comp = document.getElementById(`csc-comp-${sc.id}`)?.value;
+    const defer = document.getElementById(`csc-defer-${sc.id}`)?.value;
+    if (load) obj.load_pct = parseFloat(load);
+    if (amb)  obj.ambient_f = U.ambToF(parseFloat(amb));
+    if (comp && defer) obj.defer_services = { [comp]: parseInt(defer) };
+    return obj;
+  });
+  const data = await apiFetch("/predict/compare", "POST", { days, scenarios });
+  return { type: "compare", data, days };
+}
+
+function renderResults(result) {
+  document.getElementById("empty-state").style.display = "none";
+  document.getElementById("results-content").style.display = "block";
+  Object.values(projectionCharts).forEach(c => c.destroy());
+  projectionCharts = {};
+  if (result.type === "project") renderProjectResult(result);
+  else renderCompareResult(result);
+}
+
+function renderProjectResult({ data, days }) {
+  document.getElementById("results-ph").innerHTML =
+    `Results <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-size:10px">— ${days}-day projection</span>`;
+  document.getElementById("results-content").innerHTML = buildProjectHTML(data, days);
+
+  // Component charts
+  ["fluid_filter","separator_element","thermal_valve","shaft_seal"].forEach(cid => {
+    const traj = data.component_trajectories?.[cid];
+    if (!traj?.length) return;
+    const canvas = document.getElementById(`chart-${cid}`);
+    if (!canvas) return;
+    const startHealth = traj[0]?.health_pct ?? 100;
+    const color = startHealth < 30 ? "#e03040" : startHealth < 70 ? "#e8a020" : "#1db87a";
+    projectionCharts[cid] = new Chart(canvas.getContext("2d"), {
+      type:"line",
+      data:{ labels:traj.map(t=>`d${t.day}`), datasets:[{ data:traj.map(t=>t.health_pct), borderColor:color, backgroundColor:color+"18", borderWidth:2, pointRadius:0, tension:0.3, fill:true }]},
+      options:{
+        animation:false, responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{ backgroundColor:"#0f1318", borderColor:"#1e2730", borderWidth:1, titleColor:"#c8d4e0", bodyColor:"#7a8fa0", titleFont:{family:"Consolas,monospace",size:10}, bodyFont:{family:"Consolas,monospace",size:10} }},
+        scales:{ x:{display:false}, y:{min:0,max:100,display:true,grid:{color:"#1e2730"},ticks:{color:"#3d5060",font:{family:"Consolas,monospace",size:9},maxTicksLimit:4},border:{color:"#1e2730"}} }
+      }
+    });
+  });
+
+  const sensorTraj = data.sensor_trajectory || [];
+  const axOpts = (dual) => ({
+    animation:false, responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:true, labels:{color:"#7a8fa0",font:{family:"Consolas,monospace",size:9},boxWidth:10,padding:6}} },
+    scales:{
+      x:{display:false},
+      y:{display:true,position:"left",grid:{color:"#1e2730"},ticks:{color:"#3d5060",font:{family:"Consolas,monospace",size:9},maxTicksLimit:4},border:{color:"#1e2730"}},
+      ...(dual ? {y2:{display:true,position:"right",grid:{drawOnChartArea:false},ticks:{color:"#253040",font:{family:"Consolas,monospace",size:9},maxTicksLimit:4},border:{color:"#1e2730"}}} : {})
+    }
+  });
+
+  if (sensorTraj.length) {
+    // Pressure chart: P1 P2 P3 P4
+    const pCanvas = document.getElementById("chart-pressure");
+    if (pCanvas) {
+      projectionCharts["pressure"] = new Chart(pCanvas.getContext("2d"), {
+        type:"line",
+        data:{ labels:sensorTraj.map(t=>`d${t.day}`), datasets:[
+          { label:"P1", data:sensorTraj.map(t=>U.presVal(t.P1)), borderColor:"#1db87a", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false },
+          { label:"P2", data:sensorTraj.map(t=>U.presVal(t.P2)), borderColor:"#2080e0", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false },
+          { label:"P3", data:sensorTraj.map(t=>U.presVal(t.P3)), borderColor:"#8060e0", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false },
+          { label:"P4", data:sensorTraj.map(t=>U.presVal(t.P4)), borderColor:"#18b8c8", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false },
+        ]},
+        options:axOpts(false)
+      });
+    }
+    // Temp+vacuum chart: T1, T2 (left), PSW1 (right, dashed)
+    const tCanvas = document.getElementById("chart-temp");
+    if (tCanvas) {
+      projectionCharts["temp"] = new Chart(tCanvas.getContext("2d"), {
+        type:"line",
+        data:{ labels:sensorTraj.map(t=>`d${t.day}`), datasets:[
+          { label:"T1 "+U.tempUnit(), data:sensorTraj.map(t=>U.tempVal(t.T1)), borderColor:"#e03040", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:"y" },
+          { label:"T2 "+U.tempUnit(), data:sensorTraj.map(t=>U.tempVal(t.T2)), borderColor:"#e8a020", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:"y" },
+          { label:"PSW1 "+U.vacUnit(), data:sensorTraj.map(t=>U.vacVal(t.PSW1)), borderColor:"#e8a020AA", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:"y2", borderDash:[4,3] },
+        ]},
+        options:axOpts(true)
+      });
+    }
+  }
+}
+
+function buildProjectHTML(data, days) {
+  const daysWarn = data.days_to_first_warning, daysFault = data.days_to_first_fault, daysShut = data.days_to_shutdown;
+
+  function tval(d, label, alreadyActive) {
+    if (alreadyActive) return `<div class="tcard-value fault" style="font-size:14px">ACTIVE NOW</div><div class="tcard-sub">fault present at start</div>`;
+    if (d == null) return `<div class="tcard-value ok">none</div><div class="tcard-sub">not projected in ${days}d</div>`;
+    const cls = d < 7 ? "fault" : d < 21 ? "warn" : "ok";
+    return `<div class="tcard-value ${cls}">${d.toFixed(1)}d</div><div class="tcard-sub">${label || ""}</div>`;
+  }
+
+  const compCharts = ["fluid_filter","separator_element","thermal_valve","shaft_seal"].map(cid => `
+    <div class="proj-chart-card">
+      <div class="chart-title">${cid.replace(/_/g," ")}</div>
+      <div class="chart-wrap"><canvas id="chart-${cid}"></canvas></div>
+    </div>`).join("");
+
+  const sensorCharts = `
+    <div class="proj-chart-card" style="grid-column:span 2;height:150px">
+      <div class="chart-title">Pressure trajectory — P1 P2 P3 P4 (${U.presUnit()})</div>
+      <div class="chart-wrap"><canvas id="chart-pressure"></canvas></div>
+    </div>
+    <div class="proj-chart-card" style="grid-column:span 2;height:150px">
+      <div class="chart-title">Temperature / Vacuum — T1 T2 (${U.tempUnit()}) · PSW1 (${U.vacUnit()})</div>
+      <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
+    </div>`;
+
+  const mitigations = (data.mitigations || []).map(m => `
+    <div class="mitigation">
+      <div class="mit-urgency ${m.urgency}">${m.urgency.replace(/_/g," ")}</div>
+      <div class="mit-body">
+        <div class="mit-action">${m.action}</div>
+        <div class="mit-reason">${convertUnitsInTextToMetric(m.reason||"")}</div>
+        <div class="mit-impact">${convertUnitsInTextToMetric(m.impact||"")}</div>
+      </div>
+      ${m.part ? `<div class="mit-part">${m.part}</div>` : "<div></div>"}
+    </div>`).join("") || `<div style="font-family:var(--mono);font-size:11px;color:var(--green);padding:8px 0">✓ No mitigations required within projection window</div>`;
+
+  return `
+    ${data.already_shutdown ? `
+    <div class="fault-banner">
+      <div class="fault-banner-title"><span class="pulse-dot"></span> Active shutdown fault — machine is currently in fault state</div>
+      ${(data.active_faults_at_start||[]).map(f=>`
+        <div class="fault-row">
+          <span class="fault-code">${f.code}</span>
+          <span class="fault-val">${f.severity} — value ${f.value?.toFixed(1)} / threshold ${f.threshold}</span>
+        </div>`).join("")}
+      <div style="font-size:11px;color:var(--text2);margin-top:6px">The projection below shows what else will develop if this fault is not resolved.</div>
+    </div>` : data.already_faulted ? `
+    <div class="warn-banner">⚠ Active maintenance fault present — timeline shows additional faults that develop beyond what already exists.</div>` : ""}
+    <div class="timeline-row">
+      <div class="tcard ${daysWarn ? (daysWarn<14?"warn":"") : "ok"}">
+        <div class="tcard-label">Warning threshold</div>
+        ${tval(daysWarn, data.first_warning_type || "", false)}
+      </div>
+      <div class="tcard ${daysFault ? (daysFault<14?"fault":"warn") : data.already_faulted ? "fault" : "ok"}">
+        <div class="tcard-label">${data.already_faulted ? "Service overdue" : "Service required"}</div>
+        ${tval(daysFault, data.first_fault_type || "", data.already_faulted && !daysFault)}
+      </div>
+      <div class="tcard ${daysShut || data.already_shutdown ? "fault" : "ok"}">
+        <div class="tcard-label">${data.already_shutdown ? "Current state" : "Hard stop"}</div>
+        ${tval(daysShut, "projected", data.already_shutdown && !daysShut)}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;font-family:var(--mono);font-size:9px;flex-wrap:wrap">
+      <span style="color:var(--amber);background:rgba(232,160,32,.08);border:1px solid rgba(232,160,32,.2);padding:2px 8px;border-radius:2px">WARNING — sensor approaching limit, machine running</span>
+      <span style="color:#80c040;background:rgba(128,192,64,.08);border:1px solid rgba(128,192,64,.2);padding:2px 8px;border-radius:2px">SERVICE REQUIRED — maintenance interval reached, machine still running</span>
+      <span style="color:var(--red);background:rgba(224,48,64,.08);border:1px solid rgba(224,48,64,.2);padding:2px 8px;border-radius:2px">HARD STOP — STS controller shuts the machine down</span>
+    </div>
+    <div class="risk-box">${convertUnitsInTextToMetric(data.risk_summary || "—")}</div>
+    <div class="result-section-header">Component Health Trajectories</div>
+    <div class="chart-grid">${compCharts}${sensorCharts}</div>
+    ${data.mitigations?.length ? `<div class="result-section-header">Recommended Actions <span style="color:var(--text3)">${data.mitigations.length} item${data.mitigations.length>1?"s":""}</span></div>${mitigations}` : ""}
+  `;
+}
+
+function renderCompareResult({ data, days }) {
+  document.getElementById("results-ph").innerHTML =
+    `Results <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-size:10px">— ${days}-day comparison · ${Object.keys(data.scenarios||{}).length} scenarios</span>`;
+  const recommendation = data.recommendation || "";
+  const bestLabel = recommendation.match(/'([^']+)'/)?.[1] || "";
+  const scenarioCards = Object.entries(data.scenarios || {}).map(([label, sc]) => {
+    const isBest = label === bestLabel;
+    const dw = sc.days_to_first_warning, df = sc.days_to_first_fault, ds = sc.days_to_shutdown;
+    const tv = d => d == null
+      ? `<span style="color:var(--green);font-size:16px;font-weight:700">none</span>`
+      : `<span style="color:${d<7?"var(--red)":d<21?"var(--amber)":"var(--green)"};font-size:16px;font-weight:700;font-family:var(--mono)">${d.toFixed(1)}d</span>`;
+    return `
+      <div class="compare-result-card ${isBest?"best":""}">
+        <div class="compare-result-header">
+          <div class="compare-result-label">${label}</div>
+          ${isBest?`<div class="best-badge">BEST OUTCOME</div>`:""}
+        </div>
+        <div class="compare-timeline">
+          <div class="compare-titem"><div class="compare-titem-label">Warning</div>${tv(dw)}</div>
+          <div class="compare-titem"><div class="compare-titem-label">Service req.</div>${tv(df)}</div>
+          <div class="compare-titem"><div class="compare-titem-label">Hard stop</div>${tv(ds)}</div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.5">${convertUnitsInTextToMetric(sc.risk_summary||"")}</div>
+      </div>`;
+  }).join("");
+  document.getElementById("results-content").innerHTML = `
+    <div class="recommendation">✓ ${recommendation}</div>
+    <div class="result-section-header">Scenario Outcomes</div>
+    <div class="compare-results-grid">${scenarioCards}</div>`;
+}
+
+function applyUrlParams() {
+  const p = new URLSearchParams(window.location.search);
+  if (p.has("api")) document.getElementById("api-url").value = p.get("api");
+  if (p.has("units") && p.get("units") === "imperial") { metric = true; toggleUnits(); }
+  if (p.has("mode")) setMode(p.get("mode"));
+  const apiVal = document.getElementById("api-url").value;
+  if (apiVal && apiVal !== "http://localhost:8000") {
+    document.getElementById("monitor-link").href = `monitor.html?api=${encodeURIComponent(apiVal)}`;
+  }
+}
+
+document.getElementById("api-url").addEventListener("change", function() {
+  document.getElementById("monitor-link").href = this.value && this.value !== "http://localhost:8000"
+    ? `monitor.html?api=${encodeURIComponent(this.value)}` : "monitor.html";
+});
+
+Chart.defaults.color = "#7a8fa0";
+applyUrlParams();
+addCompareScenario();
+addCompareScenario();
+fetchMachineState();
+setInterval(fetchMachineState, 10000);
+</script>
+</body>
+</html>

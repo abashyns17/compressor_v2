@@ -1,0 +1,250 @@
+{
+  "meta": {
+    "device": "Sullair LS110 Rotary Screw Air Compressor",
+    "schema_version": "0.2",
+    "schema_type": "sensor_correlation_map",
+    "confidence_levels": {
+      "MANUAL": "Directly stated in 02250231-030 R11",
+      "DERIVED": "Inferred from documented component relationships",
+      "SYNTHETIC": "Physically plausible estimate — requires validation"
+    }
+  },
+
+  "sensor_pairs": [
+
+    {
+      "id": "CORR_001",
+      "sensors": ["P3", "P4"],
+      "relationship": "delta",
+      "description": "Fluid filter differential pressure",
+      "expected_behaviour": "P4 always >= P3. Delta increases as filter loads.",
+      "confidence": "MANUAL",
+      "source": "Section 3.4 — fluid filter change when delta exceeds 20psi",
+      "normal_delta_psi": { "min": 2, "max": 20 },
+      "fault_delta_psi": 20,
+      "fault_message": "FILTER MAINT REQD",
+      "correlation_signatures": [
+        {
+          "pattern": "delta_rising_steadily",
+          "interpretation": "Normal filter loading — approaching service interval",
+          "confidence": "MANUAL"
+        },
+        {
+          "pattern": "delta_sudden_drop_to_near_zero",
+          "interpretation": "Filter bypass valve has opened — unfiltered oil now reaching air end",
+          "confidence": "DERIVED",
+          "reasoning": "Manual documents integral bypass valve. If delta collapses without filter change, bypass is the only path.",
+          "risk": "HIGH — abrasive particles reaching bearings and rotors"
+        }
+      ]
+    },
+
+    {
+      "id": "CORR_002",
+      "sensors": ["P3", "T1"],
+      "relationship": "inverse_correlation",
+      "description": "Oil flow sufficiency vs discharge temperature",
+      "expected_behaviour": "As P3 drops (reduced oil flow), T1 rises. Oil is both coolant and sealant in air end.",
+      "confidence": "DERIVED",
+      "reasoning": "Manual section 2.3 states fluid has three functions: coolant, seal, lubricant. Reduced flow (P3 drop) must therefore reduce cooling capacity (T1 rise).",
+      "correlation_signatures": [
+        {
+          "pattern": "P3_dropping_T1_rising_proportionally",
+          "interpretation": "Fluid filter clogging — reduced oil flow causing thermal rise",
+          "confidence": "DERIVED",
+          "action": "Check P4-P3 delta — if >15psi plan filter change"
+        },
+        {
+          "pattern": "P3_dropping_T1_flat",
+          "interpretation": "Filter bypass valve opened — oil flow restored via bypass but unfiltered",
+          "confidence": "DERIVED",
+          "risk": "HIGH — thermal appears normal but contamination risk is real",
+          "note": "This is the dangerous signature — machine appears healthy on T1 alone"
+        },
+        {
+          "pattern": "P3_normal_T1_rising",
+          "interpretation": "Thermal issue not related to oil flow — check cooler, ambient, thermal valve",
+          "confidence": "DERIVED",
+          "differential_diagnosis": ["oil_cooler_fouled", "thermal_valve_stuck_closed", "ambient_too_high", "cooling_airflow_restricted"]
+        }
+      ]
+    },
+
+    {
+      "id": "CORR_003",
+      "sensors": ["T1", "T2"],
+      "relationship": "differential",
+      "description": "Separator efficiency indicator",
+      "expected_behaviour": "T1 is wet discharge (pre-separator, oil-laden air). T2 is dry discharge (post-separator). T2 should always be lower than T1 — separator strips oil which carries heat.",
+      "confidence": "DERIVED",
+      "reasoning": "Manual section 2.4 and 2.5 document T1 and T2 positions. Oil carries thermal energy. Effective separation removes heat-carrying fluid.",
+      "normal_delta_f": { "min": 5, "max": 25 },
+      "correlation_signatures": [
+        {
+          "pattern": "T2_approaching_T1_gap_closing",
+          "interpretation": "Separator element degrading — oil carryover increasing",
+          "confidence": "DERIVED",
+          "controller_message": "SEPARATOR MAINT REQD when separator dP > 10psi",
+          "note": "T1-T2 gap closure may precede dP alert — earlier warning signal"
+        },
+        {
+          "pattern": "T2_exceeds_T1",
+          "interpretation": "Separator element ruptured — hot oil bypassing directly to discharge",
+          "confidence": "DERIVED",
+          "risk": "CRITICAL — immediate shutdown recommended"
+        },
+        {
+          "pattern": "T1_T2_both_rising_proportionally",
+          "interpretation": "Global thermal issue — not separator specific. Check cooler and thermal valve.",
+          "confidence": "DERIVED"
+        }
+      ]
+    },
+
+    {
+      "id": "CORR_004",
+      "sensors": ["T1", "ambient_temp", "load_pct"],
+      "relationship": "multivariate_baseline",
+      "description": "Thermal envelope model — expected T1 given operating conditions",
+      "expected_behaviour": "T1 is a predictable function of load percentage and ambient temperature. Deviation from expected value indicates developing fault before any threshold is breached.",
+      "confidence": "SYNTHETIC",
+      "reasoning": "Thermodynamic relationship between compression ratio, inlet conditions and discharge temperature is well-established physics. Specific correction factors require validation against real machine data.",
+      "baseline_formula": "T1_expected = T_ambient_F * (P2/P1)^((gamma-1)/gamma) * efficiency_correction",
+      "gamma": 1.4,
+      "efficiency_correction_range": { "min": 0.85, "max": 0.95, "note": "Requires calibration from real machine data" },
+      "deviation_thresholds": {
+        "watch_f": 5,
+        "warning_f": 8,
+        "action_f": 12
+      },
+      "correlation_signatures": [
+        {
+          "pattern": "T1_above_model_load_and_ambient_stable",
+          "deviation_f": 6,
+          "interpretation": "Thermal system degrading — 6°F above model prediction suggests developing restriction in oil circuit or cooler fouling",
+          "confidence": "SYNTHETIC",
+          "time_to_fault_estimate": "hours_to_days_depending_on_rate_of_deviation_growth"
+        },
+        {
+          "pattern": "T1_below_model_load_and_ambient_stable",
+          "deviation_f": -8,
+          "interpretation": "Thermal valve stuck open — overcooling at current conditions",
+          "confidence": "DERIVED",
+          "risk": "condensation and fluid foaming at sustained low temperatures"
+        }
+      ]
+    },
+
+    {
+      "id": "CORR_005",
+      "sensors": ["P1", "P2"],
+      "relationship": "tracking_delta_under_load_change",
+      "description": "Sump-to-line pressure relationship during load transitions",
+      "expected_behaviour": "During load increase, P2 rises and P1 tracks within a known band. Divergence indicates flow restriction between sump and discharge.",
+      "confidence": "DERIVED",
+      "reasoning": "Manual section 2.5 documents minimum pressure valve maintains 50psi floor. P1 and P2 are hydraulically coupled through the separator and minimum pressure valve.",
+      "correlation_signatures": [
+        {
+          "pattern": "P1_rising_faster_than_P2_on_load_increase",
+          "interpretation": "Separator restriction growing — pressure building in sump faster than it can pass through to line",
+          "confidence": "DERIVED",
+          "cross_reference": "FC_004 in failure chain schema"
+        },
+        {
+          "pattern": "P2_rising_P1_flat_on_load_increase",
+          "interpretation": "Minimum pressure valve issue — sump not tracking line pressure correctly",
+          "confidence": "DERIVED"
+        },
+        {
+          "pattern": "P1_P2_both_rising_above_unload_setpoint",
+          "interpretation": "Solenoid valve or blowdown valve failure — unload logic not functioning",
+          "confidence": "MANUAL",
+          "source": "Section 7.16.2 troubleshooting — line pressure rises above unload setpoint"
+        }
+      ]
+    },
+
+    {
+      "id": "CORR_006",
+      "sensors": ["PSW1", "P3"],
+      "relationship": "independent_restriction_indicators",
+      "description": "Inlet vs fluid system restriction differentiation",
+      "expected_behaviour": "PSW1 indicates inlet air restriction. P3 indicates fluid circuit restriction. They are hydraulically independent — one can rise without the other.",
+      "confidence": "DERIVED",
+      "reasoning": "PSW1 is on the inlet air path. P3 is on the fluid injection path. Different circuits — simultaneous rise indicates environmental cause.",
+      "correlation_signatures": [
+        {
+          "pattern": "PSW1_rising_P3_stable",
+          "interpretation": "Inlet filter clogging — air restriction only. Clean or replace inlet filter.",
+          "confidence": "MANUAL",
+          "source": "Section 7.16.2 — dirty air filter under compressor will not build full discharge pressure"
+        },
+        {
+          "pattern": "P3_dropping_PSW1_stable",
+          "interpretation": "Fluid circuit restriction — fluid filter or thermal valve. Air path clear.",
+          "confidence": "DERIVED"
+        },
+        {
+          "pattern": "PSW1_rising_P3_dropping_simultaneously",
+          "interpretation": "Environmental contamination — high particulate environment affecting both air and fluid systems simultaneously. Check installation environment.",
+          "confidence": "DERIVED",
+          "risk": "Installation problem rather than component fault — filter changes alone will not solve"
+        }
+      ]
+    },
+
+    {
+      "id": "CORR_007",
+      "sensors": ["T1", "load_pct", "P2"],
+      "relationship": "operating_regime_shift_detector",
+      "description": "Detects upstream demand changes that reweight all failure chains",
+      "expected_behaviour": "Stable operation has consistent load% for given P2 setpoint. Sudden sustained increase in load% at same P2 indicates new downstream demand — all degradation timelines accelerate.",
+      "confidence": "SYNTHETIC",
+      "reasoning": "Higher sustained load increases thermal stress, accelerates filter loading, increases seal wear rates non-linearly. Load multipliers applied to all active failure chain projections.",
+      "load_multipliers": {
+        "above_80_pct": 2.0,
+        "above_90_pct": 3.5,
+        "note": "SYNTHETIC — requires validation from real degradation data"
+      },
+      "correlation_signatures": [
+        {
+          "pattern": "load_pct_sustained_increase_above_15pct_for_4hrs",
+          "interpretation": "Operating regime has shifted — new equipment on line or process change upstream. Recalculate all failure chain projections with new load baseline.",
+          "confidence": "SYNTHETIC",
+          "agent_action": "Flag regime change, reweight all active FC projections, surface accelerated maintenance intervals"
+        }
+      ]
+    }
+
+  ],
+
+  "composite_diagnostics": [
+    {
+      "id": "CD_001",
+      "name": "Silent filter bypass detection",
+      "sensors_required": ["P3", "P4", "T1"],
+      "logic": "IF (P4_minus_P3 < 3psi) AND (T1 within_normal_range) AND (runtime > 1500hrs since last filter change) THEN filter_bypass_valve_open",
+      "confidence": "DERIVED",
+      "danger": "Machine appears healthy on individual sensor readings. Only detectable via composite logic.",
+      "action": "Immediate filter inspection — bypass allows unfiltered oil to reach air end bearings"
+    },
+    {
+      "id": "CD_002",
+      "name": "Thermal valve stuck open — early detection",
+      "sensors_required": ["T1", "ambient_temp", "load_pct"],
+      "logic": "IF (T1 < T1_expected_minus_8F) AND (load_pct > 50) AND (ambient_temp > 60F) THEN thermal_valve_stuck_open",
+      "confidence": "DERIVED",
+      "danger": "Overcooling causes condensation in sump — fluid foaming — separator damage. T1 looks acceptably low so no alarm fires.",
+      "action": "Check thermal valve element, inspect fluid for water contamination"
+    },
+    {
+      "id": "CD_003",
+      "name": "Developing separator failure — pre-alarm signature",
+      "sensors_required": ["T1", "T2", "P1"],
+      "logic": "IF (T1_minus_T2 < 8F) AND (P1 > expected_at_current_load) THEN separator_restriction_developing",
+      "confidence": "DERIVED",
+      "danger": "Separator dP alarm not yet triggered but trajectory indicates breach within projection window",
+      "action": "Plan separator replacement within 500 operating hours"
+    }
+  ]
+}
