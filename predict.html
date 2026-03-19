@@ -30,35 +30,16 @@
   }
   * { box-sizing:border-box; margin:0; padding:0; }
   html,body { height:100%; overflow:hidden; }
-  body {
-    background:var(--bg); color:var(--text);
-    font-family:var(--sans); font-size:15px;
-    display:flex; flex-direction:column;
-  }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:15px; display:flex; flex-direction:column; }
 
-  header {
-    background:var(--bg1); border-bottom:1px solid var(--border);
-    padding:0 18px; height:54px;
-    display:flex; align-items:center; gap:14px; flex-shrink:0;
-  }
+  header { background:var(--bg1); border-bottom:1px solid var(--border); padding:0 18px; height:54px; display:flex; align-items:center; gap:14px; flex-shrink:0; }
   .logo { font-family:var(--mono); font-size:13px; color:var(--text2); letter-spacing:.12em; text-transform:uppercase; }
   .logo span { color:var(--purple); }
-  .chip {
-    font-family:var(--mono); font-size:13px; color:var(--text);
-    background:var(--bg2); border:1px solid var(--bord2);
-    padding:3px 10px; border-radius:3px;
-  }
+  .chip { font-family:var(--mono); font-size:13px; color:var(--text); background:var(--bg2); border:1px solid var(--bord2); padding:3px 10px; border-radius:3px; }
   .chip.purple { color:var(--purple); background:rgba(128,96,224,.07); border-color:rgba(128,96,224,.25); }
   .chip.amber  { color:var(--amber);  background:rgba(232,160,32,.07);  border-color:rgba(232,160,32,.2); }
-
-  .nav-link {
-    font-family:var(--mono); font-size:11px; color:var(--text3);
-    text-decoration:none; padding:4px 10px; border:1px solid var(--border);
-    border-radius:3px; transition:color .15s, border-color .15s;
-    display:flex; align-items:center; gap:5px;
-  }
+  .nav-link { font-family:var(--mono); font-size:11px; color:var(--text3); text-decoration:none; padding:4px 10px; border:1px solid var(--border); border-radius:3px; transition:color .15s, border-color .15s; display:flex; align-items:center; gap:5px; }
   .nav-link:hover { color:var(--text2); border-color:var(--bord2); }
-
   #conn { margin-left:auto; font-family:var(--mono); font-size:12px; display:flex; align-items:center; gap:6px; }
   .dot { width:6px; height:6px; border-radius:50%; background:var(--red); animation:pulse 2s infinite; }
   .dot.on { background:var(--green); }
@@ -66,53 +47,23 @@
 
   .main { flex:1; display:grid; grid-template-columns: 320px 1fr; overflow:hidden; }
 
-  .config-panel {
-    border-right:1px solid var(--border);
-    display:flex; flex-direction:column; overflow:hidden;
-    background:var(--bg1);
-  }
-  .ph {
-    border-bottom:1px solid var(--border);
-    padding:8px 14px; font-family:var(--mono); font-size:10px;
-    color:var(--text3); letter-spacing:.12em; text-transform:uppercase; flex-shrink:0;
-  }
-  .config-scroll {
-    flex:1; overflow-y:auto; padding:14px;
-    scrollbar-width:thin; scrollbar-color:var(--bord2) transparent;
-  }
+  .config-panel { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; background:var(--bg1); }
+  .ph { border-bottom:1px solid var(--border); padding:8px 14px; font-family:var(--mono); font-size:10px; color:var(--text3); letter-spacing:.12em; text-transform:uppercase; flex-shrink:0; }
+  .config-scroll { flex:1; overflow-y:auto; padding:14px; scrollbar-width:thin; scrollbar-color:var(--bord2) transparent; }
 
-  .section-lbl {
-    font-family:var(--mono); font-size:9px; color:var(--text3);
-    letter-spacing:.14em; text-transform:uppercase;
-    margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--border);
-  }
+  .section-lbl { font-family:var(--mono); font-size:9px; color:var(--text3); letter-spacing:.14em; text-transform:uppercase; margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--border); }
   .section-lbl:first-child { margin-top:0; }
-
   .field { margin-bottom:10px; }
-  .field-label {
-    font-family:var(--mono); font-size:10px; color:var(--text2);
-    margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;
-  }
+  .field-label { font-family:var(--mono); font-size:10px; color:var(--text2); margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
   .field-hint { font-size:9px; color:var(--text3); }
 
-  input[type=range] {
-    width:100%; height:3px; -webkit-appearance:none;
-    background:var(--border); border-radius:2px; outline:none; cursor:pointer;
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance:none; width:14px; height:14px;
-    border-radius:50%; background:var(--purple); cursor:pointer;
-  }
-  input[type=number], select, input[type=text] {
-    width:100%; background:var(--bg2); border:1px solid var(--bord2);
-    color:var(--text); font-family:var(--mono); font-size:12px;
-    padding:6px 10px; border-radius:3px; outline:none; transition:border-color .15s;
-  }
+  input[type=range] { width:100%; height:3px; -webkit-appearance:none; background:var(--border); border-radius:2px; outline:none; cursor:pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--purple); cursor:pointer; }
+  input[type=number], select, input[type=text] { width:100%; background:var(--bg2); border:1px solid var(--bord2); color:var(--text); font-family:var(--mono); font-size:12px; padding:6px 10px; border-radius:3px; outline:none; transition:border-color .15s; }
   input[type=number]:focus, select:focus { border-color:var(--purple); }
 
   .range-row { display:flex; align-items:center; gap:8px; }
   .range-val { font-family:var(--mono); font-size:12px; color:var(--purple); min-width:52px; text-align:right; flex-shrink:0; }
-
   .defer-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
   .defer-name { font-family:var(--mono); font-size:11px; color:var(--text2); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .defer-input { width:70px !important; text-align:right; padding:4px 8px !important; font-size:11px !important; }
@@ -120,30 +71,16 @@
 
   .compare-card { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:10px; margin-bottom:8px; }
   .compare-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-  .compare-label {
-    font-family:var(--mono); font-size:11px; color:var(--text);
-    background:transparent; border:1px solid var(--bord2);
-    padding:3px 8px; border-radius:3px; width:120px;
-  }
+  .compare-label { font-family:var(--mono); font-size:11px; color:var(--text); background:transparent; border:1px solid var(--bord2); padding:3px 8px; border-radius:3px; width:120px; }
   .compare-label:focus { border-color:var(--purple); outline:none; }
   .remove-btn { font-family:var(--mono); font-size:10px; color:var(--text3); background:none; border:none; cursor:pointer; padding:2px 6px; border-radius:2px; transition:color .15s; }
   .remove-btn:hover { color:var(--red); }
 
   .mode-tabs { display:flex; gap:4px; margin-bottom:14px; }
-  .mode-tab {
-    flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.08em;
-    text-transform:uppercase; padding:7px 4px; text-align:center;
-    background:var(--bg2); border:1px solid var(--border); border-radius:3px;
-    cursor:pointer; color:var(--text3); transition:all .15s;
-  }
+  .mode-tab { flex:1; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:7px 4px; text-align:center; background:var(--bg2); border:1px solid var(--border); border-radius:3px; cursor:pointer; color:var(--text3); transition:all .15s; }
   .mode-tab.active { background:rgba(128,96,224,.12); border-color:rgba(128,96,224,.35); color:var(--purple); }
 
-  .run-btn {
-    width:100%; padding:12px; margin-top:14px;
-    background:rgba(128,96,224,.15); border:1px solid rgba(128,96,224,.4);
-    color:var(--purple); font-family:var(--mono); font-size:13px;
-    letter-spacing:.06em; border-radius:4px; cursor:pointer; transition:all .2s; text-transform:uppercase;
-  }
+  .run-btn { width:100%; padding:12px; margin-top:14px; background:rgba(128,96,224,.15); border:1px solid rgba(128,96,224,.4); color:var(--purple); font-family:var(--mono); font-size:13px; letter-spacing:.06em; border-radius:4px; cursor:pointer; transition:all .2s; text-transform:uppercase; }
   .run-btn:hover { background:rgba(128,96,224,.25); border-color:rgba(128,96,224,.6); }
   .run-btn:disabled { opacity:.4; cursor:not-allowed; }
   .run-btn.running { color:var(--amber); border-color:rgba(232,160,32,.4); background:rgba(232,160,32,.08); }
@@ -151,11 +88,7 @@
   .results-panel { display:flex; flex-direction:column; overflow:hidden; }
   .results-scroll { flex:1; overflow-y:auto; padding:16px; scrollbar-width:thin; scrollbar-color:var(--bord2) transparent; }
 
-  .empty-state {
-    height:100%; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; gap:12px;
-    color:var(--text3); font-family:var(--mono); font-size:12px;
-  }
+  .empty-state { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--text3); font-family:var(--mono); font-size:12px; }
   .empty-icon { font-size:40px; opacity:.3; }
   .empty-hint { font-size:10px; letter-spacing:.1em; text-transform:uppercase; }
 
@@ -171,25 +104,21 @@
   .tcard-value.fault { color:var(--red); }
   .tcard-sub { font-family:var(--mono); font-size:10px; color:var(--text3); margin-top:4px; }
 
-  .risk-box {
-    background:var(--bg2); border:1px solid var(--bord2); border-radius:4px;
-    padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; color:var(--text);
-    border-left:3px solid var(--purple);
-  }
+  .risk-box { background:var(--bg2); border:1px solid var(--bord2); border-radius:4px; padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; color:var(--text); border-left:3px solid var(--purple); }
 
   .chart-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; }
-  .proj-chart-card {
-    background:var(--bg1); border:1px solid var(--border); border-radius:4px;
-    padding:10px 12px; height:160px; display:flex; flex-direction:column;
-  }
-  .chart-title { font-family:var(--mono); font-size:10px; color:var(--text3); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; flex-shrink:0; }
+  .proj-chart-card { background:var(--bg1); border:1px solid var(--border); border-radius:4px; padding:10px 12px; height:260px; display:flex; flex-direction:column; }
+  .chart-title { font-family:var(--mono); font-size:10px; color:var(--text3); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; }
   .chart-wrap { flex:1; min-height:0; position:relative; }
 
-  .mitigation {
-    background:var(--bg2); border:1px solid var(--border); border-radius:4px;
-    padding:10px 14px; margin-bottom:8px;
-    display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:start;
-  }
+  .info-btn { width:16px; height:16px; border-radius:50%; background:var(--bg3); border:1px solid var(--bord2); color:var(--text3); font-size:9px; font-family:var(--mono); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .15s; line-height:1; }
+  .info-btn:hover { border-color:var(--cyan); color:var(--cyan); }
+  .info-tooltip { position:fixed; background:var(--bg1); border:1px solid var(--bord2); border-radius:4px; padding:10px 12px; font-size:11px; color:var(--text2); line-height:1.5; z-index:9999; max-width:340px; box-shadow:0 4px 20px rgba(0,0,0,.5); pointer-events:none; }
+  .info-tooltip .it-title { font-family:var(--mono); font-size:10px; color:var(--cyan); margin-bottom:5px; letter-spacing:.06em; }
+  .info-tooltip .it-body { font-size:11px; color:var(--text2); line-height:1.55; }
+  .info-tooltip .it-fault { margin-top:6px; padding:5px 8px; background:rgba(224,48,64,.08); border:1px solid rgba(224,48,64,.2); border-radius:3px; font-family:var(--mono); font-size:10px; color:var(--red); }
+
+  .mitigation { background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:10px 14px; margin-bottom:8px; display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:start; }
   .mit-urgency { font-family:var(--mono); font-size:9px; padding:3px 7px; border-radius:2px; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; margin-top:2px; }
   .mit-urgency.immediate     { background:var(--red2); color:var(--red); }
   .mit-urgency.within_7_days { background:var(--amb2); color:var(--amber); }
@@ -226,11 +155,8 @@
   #units-btn:hover { border-color:var(--cyan); }
   #f-status { margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text3); }
   input[type=text].footer-input { background:var(--bg2); border:1px solid var(--bord2); color:var(--text2); font-family:var(--mono); font-size:11px; padding:4px 8px; border-radius:3px; outline:none; width:200px; }
-
   .config-scroll::-webkit-scrollbar, .results-scroll::-webkit-scrollbar { width:4px; }
-  .config-scroll::-webkit-scrollbar-track, .results-scroll::-webkit-scrollbar-track { background:transparent; }
   .config-scroll::-webkit-scrollbar-thumb, .results-scroll::-webkit-scrollbar-thumb { background:var(--bord2); border-radius:2px; }
-
   #err-banner { display:none; background:rgba(224,48,64,.1); border-bottom:1px solid var(--red2); padding:3px 14px; font-family:var(--mono); font-size:11px; color:var(--red); flex-shrink:0; }
   .add-scenario-btn { width:100%; padding:7px; margin-top:4px; background:transparent; border:1px dashed var(--bord2); color:var(--text3); font-family:var(--mono); font-size:10px; border-radius:3px; cursor:pointer; transition:all .15s; letter-spacing:.06em; }
   .add-scenario-btn:hover { border-color:var(--purple); color:var(--purple); }
@@ -251,7 +177,6 @@
   <div class="config-panel">
     <div class="ph">Projection Config</div>
     <div class="config-scroll">
-
       <div class="section-lbl">Mode</div>
       <div class="mode-tabs">
         <div class="mode-tab active" id="tab-project" onclick="setMode('project')">Project</div>
@@ -263,16 +188,12 @@
         <div class="field">
           <div class="field-label">Days ahead <span class="field-hint">how far to simulate</span></div>
           <div class="range-row">
-            <input type="range" id="proj-days" min="1" max="180" value="30"
-                   oninput="document.getElementById('proj-days-val').textContent=this.value+' days'">
+            <input type="range" id="proj-days" min="1" max="180" value="30" oninput="document.getElementById('proj-days-val').textContent=this.value+' days'">
             <div class="range-val" id="proj-days-val">30 days</div>
           </div>
         </div>
-
         <div class="section-lbl">Operating Conditions Override</div>
-        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px">
-          Leave blank to use current machine state. Override to test "what if" conditions.
-        </div>
+        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px">Leave blank to use current machine state. Override to test "what if" conditions.</div>
         <div class="field">
           <div class="field-label">Load % <span class="field-hint">current</span></div>
           <div class="range-row">
@@ -287,24 +208,18 @@
             <div class="range-val" id="proj-amb-val" style="color:var(--text3)">current</div>
           </div>
         </div>
-
         <div class="section-lbl">Defer Services</div>
-        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px">
-          Days to delay servicing each component. Higher = more degradation = faults arrive sooner.
-        </div>
+        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px">Days to delay servicing each component. Higher = more degradation = faults arrive sooner.</div>
         <div id="defer-rows"></div>
       </div>
 
       <div id="mode-compare" style="display:none">
         <div class="section-lbl">Projection Window</div>
-        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:8px">
-          All scenarios run over the same window — results are directly comparable.
-        </div>
+        <div class="field-hint" style="font-size:10px;color:var(--text3);margin-bottom:8px">All scenarios run over the same window — results are directly comparable.</div>
         <div class="field">
           <div class="field-label">Days ahead <span class="field-hint">shared across all scenarios</span></div>
           <div class="range-row">
-            <input type="range" id="cmp-days" min="1" max="180" value="30"
-                   oninput="document.getElementById('cmp-days-val').textContent=this.value+' days'">
+            <input type="range" id="cmp-days" min="1" max="180" value="30" oninput="document.getElementById('cmp-days-val').textContent=this.value+' days'">
             <div class="range-val" id="cmp-days-val">30 days</div>
           </div>
         </div>
@@ -481,7 +396,7 @@ function renderCompareCards() {
         <input type="number" min="0" max="45" placeholder="current" id="csc-amb-${sc.id}" style="padding:4px 8px;font-size:11px">
       </div>
       <div class="field">
-        <div class="field-label" style="font-size:9px">Defer one service <span style="color:var(--text3)">(optional — "what if we push this out?")</span></div>
+        <div class="field-label" style="font-size:9px">Defer one service <span style="color:var(--text3)">(optional)</span></div>
         <select id="csc-comp-${sc.id}" style="padding:4px 8px;font-size:11px;margin-bottom:4px" onchange="toggleDeferInput(${sc.id}, this.value)">
           <option value="">— none —</option>
           ${COMPONENTS.map(c=>`<option value="${c}">${c.replace(/_/g," ")}</option>`).join("")}
@@ -555,20 +470,39 @@ function renderProjectResult({ data, days }) {
     `Results <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-size:10px">— ${days}-day projection</span>`;
   document.getElementById("results-content").innerHTML = buildProjectHTML(data, days);
 
+  // Render mini FTA tree — async, fetches live tree from /analysis/fta
+  if (data.projected_findings?.length) {
+    const projIds = new Set(data.projected_findings.map(f => f.correlation_id));
+    window._projFindingsMap = {};
+    data.projected_findings.forEach(f => { window._projFindingsMap[f.correlation_id] = f; });
+    renderProjFtaTree(projIds);
+  }
+
   // Component charts
   ["fluid_filter","separator_element","thermal_valve","shaft_seal"].forEach(cid => {
     const traj = data.component_trajectories?.[cid];
     if (!traj?.length) return;
     const canvas = document.getElementById(`chart-${cid}`);
     if (!canvas) return;
-    const startHealth = traj[0]?.health_pct ?? 100;
-    const color = startHealth < 30 ? "#e03040" : startHealth < 70 ? "#e8a020" : "#1db87a";
+    const ann = data.chart_annotations?.[cid] || {};
+    const status = ann.status || (traj[0]?.health_pct < 30 ? "critical" : traj[0]?.health_pct < 70 ? "degraded" : "healthy");
+    const color = status === "critical" ? "#e03040" : status === "degraded" ? "#e8a020" : "#1db87a";
+    const faultDay = ann.fault_cross_day;
+    const thrDataset = { data:traj.map(()=>30), borderColor:"#e0304060", borderWidth:1, borderDash:[4,3], pointRadius:0, fill:false, label:"fault threshold" };
+    const datasets = [
+      { data:traj.map(t=>t.health_pct), borderColor:color, backgroundColor:color+"18", borderWidth:2, pointRadius:0, tension:0.3, fill:true, label:"health" },
+      thrDataset,
+    ];
+    const faultIdx = faultDay != null ? traj.findIndex(t => t.day >= faultDay) : -1;
+    if (faultIdx >= 0) {
+      datasets.push({ data:traj.map((t,i)=>i===faultIdx?100:null), borderColor:"#e0304090", borderWidth:1.5, borderDash:[4,3], pointRadius:(ctx=>ctx.dataIndex===faultIdx?4:0), pointBackgroundColor:"#e03040", fill:false, label:ann.fault_annotation||"", tension:0 });
+    }
     projectionCharts[cid] = new Chart(canvas.getContext("2d"), {
       type:"line",
-      data:{ labels:traj.map(t=>`d${t.day}`), datasets:[{ data:traj.map(t=>t.health_pct), borderColor:color, backgroundColor:color+"18", borderWidth:2, pointRadius:0, tension:0.3, fill:true }]},
+      data:{ labels:traj.map(t=>`d${t.day}`), datasets },
       options:{
         animation:false, responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false}, tooltip:{ backgroundColor:"#0f1318", borderColor:"#1e2730", borderWidth:1, titleColor:"#c8d4e0", bodyColor:"#7a8fa0", titleFont:{family:"Consolas,monospace",size:10}, bodyFont:{family:"Consolas,monospace",size:10} }},
+        plugins:{ legend:{display:false}, tooltip:{ backgroundColor:"#0f1318", borderColor:"#1e2730", borderWidth:1, titleColor:"#c8d4e0", bodyColor:"#7a8fa0", titleFont:{family:"Consolas,monospace",size:10}, bodyFont:{family:"Consolas,monospace",size:10}, filter:item=>item.datasetIndex===0 } },
         scales:{ x:{display:false}, y:{min:0,max:100,display:true,grid:{color:"#1e2730"},ticks:{color:"#3d5060",font:{family:"Consolas,monospace",size:9},maxTicksLimit:4},border:{color:"#1e2730"}} }
       }
     });
@@ -586,7 +520,6 @@ function renderProjectResult({ data, days }) {
   });
 
   if (sensorTraj.length) {
-    // Pressure chart: P1 P2 P3 P4
     const pCanvas = document.getElementById("chart-pressure");
     if (pCanvas) {
       projectionCharts["pressure"] = new Chart(pCanvas.getContext("2d"), {
@@ -596,21 +529,24 @@ function renderProjectResult({ data, days }) {
           { label:"P2", data:sensorTraj.map(t=>U.presVal(t.P2)), borderColor:"#2080e0", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false },
           { label:"P3", data:sensorTraj.map(t=>U.presVal(t.P3)), borderColor:"#8060e0", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false },
           { label:"P4", data:sensorTraj.map(t=>U.presVal(t.P4)), borderColor:"#18b8c8", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false },
-        ]},
-        options:axOpts(false)
+        ]}, options:axOpts(false)
       });
     }
-    // Temp+vacuum chart: T1, T2 (left), PSW1 (right, dashed)
     const tCanvas = document.getElementById("chart-temp");
     if (tCanvas) {
+      const t1ann = data.chart_annotations?.T1 || {};
+      const warnVal = metric ? (t1ann.warn_threshold_c??90.6) : (t1ann.warn_threshold_f??195);
+      const shutVal = metric ? (t1ann.shutdown_threshold_c??93.3) : (t1ann.shutdown_threshold_f??200);
+      const warnLine = { label:"Warn "+warnVal.toFixed(0)+U.tempUnit(), data:sensorTraj.map(()=>warnVal), borderColor:"#e8a02070", borderWidth:1.2, borderDash:[5,3], pointRadius:0, fill:false, yAxisID:"y" };
+      const shutLine = { label:"Shutdown "+shutVal.toFixed(0)+U.tempUnit(), data:sensorTraj.map(()=>shutVal), borderColor:"#e0304070", borderWidth:1.2, borderDash:[5,3], pointRadius:0, fill:false, yAxisID:"y" };
       projectionCharts["temp"] = new Chart(tCanvas.getContext("2d"), {
         type:"line",
         data:{ labels:sensorTraj.map(t=>`d${t.day}`), datasets:[
           { label:"T1 "+U.tempUnit(), data:sensorTraj.map(t=>U.tempVal(t.T1)), borderColor:"#e03040", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:"y" },
           { label:"T2 "+U.tempUnit(), data:sensorTraj.map(t=>U.tempVal(t.T2)), borderColor:"#e8a020", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:"y" },
           { label:"PSW1 "+U.vacUnit(), data:sensorTraj.map(t=>U.vacVal(t.PSW1)), borderColor:"#e8a020AA", borderWidth:1.5, pointRadius:0, tension:0.3, fill:false, yAxisID:"y2", borderDash:[4,3] },
-        ]},
-        options:axOpts(true)
+          warnLine, shutLine,
+        ]}, options:axOpts(true)
       });
     }
   }
@@ -626,18 +562,60 @@ function buildProjectHTML(data, days) {
     return `<div class="tcard-value ${cls}">${d.toFixed(1)}d</div><div class="tcard-sub">${label || ""}</div>`;
   }
 
-  const compCharts = ["fluid_filter","separator_element","thermal_valve","shaft_seal"].map(cid => `
-    <div class="proj-chart-card">
-      <div class="chart-title">${cid.replace(/_/g," ")}</div>
+  const compCharts = ["fluid_filter","separator_element","thermal_valve","shaft_seal"].map(cid => {
+    const ann = data.chart_annotations?.[cid] || {};
+    const title = ann.chart_title || cid.replace(/_/g," ");
+    const faultMsg = (ann.fault_annotation || "No fault projected in this window.").replace(/'/g,"\\'");
+    const healthRange = `${ann.start_health_pct?.toFixed(0)??"?"}%→${ann.end_health_pct?.toFixed(0)??"?"}%`;
+    const dispTitle = cid.replace(/_/g," ").replace(/'/g,"\\'");
+    return `<div class="proj-chart-card">
+      <div class="chart-title">
+        <span>${title}</span>
+        <button class="info-btn" onclick="showInfoTooltip(event,'${dispTitle}','${faultMsg}','${healthRange}')">i</button>
+      </div>
       <div class="chart-wrap"><canvas id="chart-${cid}"></canvas></div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
+
+  const allComps = Object.entries(data.component_trajectories || {})
+    .map(([cid, traj]) => {
+      const ann = data.chart_annotations?.[cid] || {};
+      const endHealth = ann.end_health_pct ?? (traj[traj.length-1]?.health_pct ?? 100);
+      const status = ann.status || (endHealth < 30 ? "critical" : endHealth < 70 ? "degraded" : "healthy");
+      const col = status === "critical" ? "var(--red)" : status === "degraded" ? "var(--amber)" : "var(--green)";
+      const faultDay = ann.fault_cross_day;
+      const faultTag = faultDay != null ? `<span style="font-family:var(--mono);font-size:9px;color:var(--red);margin-left:8px;flex-shrink:0">⚠ fault day ${faultDay}</span>` : "";
+      return { cid, endHealth, col, faultTag };
+    })
+    .sort((a,b) => a.endHealth - b.endHealth)
+    .map(({cid, endHealth, col, faultTag}) => `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <div style="font-size:11px;color:var(--text2);width:140px;flex-shrink:0">${cid.replace(/_/g," ")}</div>
+        <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+          <div style="width:${endHealth}%;height:100%;background:${col};border-radius:2px"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:${col};width:36px;text-align:right;flex-shrink:0">${endHealth.toFixed(0)}%</div>
+        ${faultTag}
+      </div>`).join("");
+
+  const projFindings = data.projected_findings || [];
+  const projFtaHtml = projFindings.length ? `
+    <div class="result-section-header">Projected Fault Tree Impact <span style="color:var(--text3);font-size:9px;text-transform:none;letter-spacing:0">click any node for details</span></div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:12px;overflow-x:auto">
+      <div id="proj-fta-container" style="min-height:200px"></div>
+      <div style="font-size:10px;color:var(--text3);margin-top:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:rgba(232,160,32,.15);border:1px dashed #e8a020;display:inline-block"></span> Projected fault</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:rgba(224,48,64,.15);border:1px dashed #e03040;display:inline-block"></span> Critical projected</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#141920;border:1px solid #1e2730;display:inline-block"></span> Not projected</span>
+      </div>
+    </div>` : "";
 
   const sensorCharts = `
-    <div class="proj-chart-card" style="grid-column:span 2;height:150px">
+    <div class="proj-chart-card" style="grid-column:span 2;height:220px">
       <div class="chart-title">Pressure trajectory — P1 P2 P3 P4 (${U.presUnit()})</div>
       <div class="chart-wrap"><canvas id="chart-pressure"></canvas></div>
     </div>
-    <div class="proj-chart-card" style="grid-column:span 2;height:150px">
+    <div class="proj-chart-card" style="grid-column:span 2;height:220px">
       <div class="chart-title">Temperature / Vacuum — T1 T2 (${U.tempUnit()}) · PSW1 (${U.vacUnit()})</div>
       <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
     </div>`;
@@ -656,27 +634,19 @@ function buildProjectHTML(data, days) {
   return `
     ${data.already_shutdown ? `
     <div class="fault-banner">
-      <div class="fault-banner-title"><span class="pulse-dot"></span> Active shutdown fault — machine is currently in fault state</div>
-      ${(data.active_faults_at_start||[]).map(f=>`
-        <div class="fault-row">
-          <span class="fault-code">${f.code}</span>
-          <span class="fault-val">${f.severity} — value ${f.value?.toFixed(1)} / threshold ${f.threshold}</span>
-        </div>`).join("")}
-      <div style="font-size:11px;color:var(--text2);margin-top:6px">The projection below shows what else will develop if this fault is not resolved.</div>
+      <div class="fault-banner-title"><span class="pulse-dot"></span> Active shutdown fault</div>
+      ${(data.active_faults_at_start||[]).map(f=>`<div class="fault-row"><span class="fault-code">${f.code}</span><span class="fault-val">${f.severity}</span></div>`).join("")}
     </div>` : data.already_faulted ? `
-    <div class="warn-banner">⚠ Active maintenance fault present — timeline shows additional faults that develop beyond what already exists.</div>` : ""}
+    <div class="warn-banner">⚠ Active maintenance fault — timeline shows additional faults that develop beyond what already exists.</div>` : ""}
     <div class="timeline-row">
-      <div class="tcard ${daysWarn ? (daysWarn<14?"warn":"") : "ok"}">
-        <div class="tcard-label">Warning threshold</div>
-        ${tval(daysWarn, data.first_warning_type || "", false)}
+      <div class="tcard ${daysWarn?(daysWarn<14?"warn":""):"ok"}">
+        <div class="tcard-label">Warning threshold</div>${tval(daysWarn,data.first_warning_type||"",false)}
       </div>
-      <div class="tcard ${daysFault ? (daysFault<14?"fault":"warn") : data.already_faulted ? "fault" : "ok"}">
-        <div class="tcard-label">${data.already_faulted ? "Service overdue" : "Service required"}</div>
-        ${tval(daysFault, data.first_fault_type || "", data.already_faulted && !daysFault)}
+      <div class="tcard ${daysFault?(daysFault<14?"fault":"warn"):data.already_faulted?"fault":"ok"}">
+        <div class="tcard-label">${data.already_faulted?"Service overdue":"Service required"}</div>${tval(daysFault,data.first_fault_type||"",data.already_faulted&&!daysFault)}
       </div>
-      <div class="tcard ${daysShut || data.already_shutdown ? "fault" : "ok"}">
-        <div class="tcard-label">${data.already_shutdown ? "Current state" : "Hard stop"}</div>
-        ${tval(daysShut, "projected", data.already_shutdown && !daysShut)}
+      <div class="tcard ${daysShut||data.already_shutdown?"fault":"ok"}">
+        <div class="tcard-label">${data.already_shutdown?"Current state":"Hard stop"}</div>${tval(daysShut,"projected",data.already_shutdown&&!daysShut)}
       </div>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:12px;font-family:var(--mono);font-size:9px;flex-wrap:wrap">
@@ -684,11 +654,191 @@ function buildProjectHTML(data, days) {
       <span style="color:#80c040;background:rgba(128,192,64,.08);border:1px solid rgba(128,192,64,.2);padding:2px 8px;border-radius:2px">SERVICE REQUIRED — maintenance interval reached, machine still running</span>
       <span style="color:var(--red);background:rgba(224,48,64,.08);border:1px solid rgba(224,48,64,.2);padding:2px 8px;border-radius:2px">HARD STOP — STS controller shuts the machine down</span>
     </div>
-    <div class="risk-box">${convertUnitsInTextToMetric(data.risk_summary || "—")}</div>
+    <div class="risk-box">${convertUnitsInTextToMetric(data.risk_summary||"—")}</div>
     <div class="result-section-header">Component Health Trajectories</div>
     <div class="chart-grid">${compCharts}${sensorCharts}</div>
-    ${data.mitigations?.length ? `<div class="result-section-header">Recommended Actions <span style="color:var(--text3)">${data.mitigations.length} item${data.mitigations.length>1?"s":""}</span></div>${mitigations}` : ""}
+    <div class="result-section-header">All Components — End of Projection</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:12px">${allComps}</div>
+    ${projFtaHtml}
+    ${data.mitigations?.length?`<div class="result-section-header">Recommended Actions <span style="color:var(--text3)">${data.mitigations.length} items</span></div>${mitigations}`:""}
   `;
+}
+
+// ── Info tooltip ──────────────────────────────────────────────────────────────
+let _tipEl = null;
+function showInfoTooltip(event, title, bodyText, subText) {
+  if (_tipEl) { _tipEl.remove(); _tipEl = null; }
+  const div = document.createElement("div");
+  div.className = "info-tooltip";
+  const isHealthy = bodyText === "No fault projected in this window." || bodyText === "No description available.";
+  div.innerHTML = `<div class="it-title">${title}</div>
+    <div class="it-body">${bodyText}</div>
+    ${subText ? `<div class="it-body" style="margin-top:4px;color:var(--text3);font-size:10px">${subText}</div>` : ""}`;
+  document.body.appendChild(div);
+  _tipEl = div;
+  const r = div.getBoundingClientRect();
+  let x = event.clientX + 12, y = event.clientY + 12;
+  if (x + r.width > window.innerWidth - 10) x = event.clientX - r.width - 12;
+  if (y + r.height > window.innerHeight - 10) y = event.clientY - r.height - 12;
+  div.style.left = x+"px"; div.style.top = y+"px";
+  const close = e => { if (_tipEl && !_tipEl.contains(e.target)) { _tipEl.remove(); _tipEl = null; document.removeEventListener("click", close); }};
+  setTimeout(() => document.addEventListener("click", close), 50);
+  event.stopPropagation();
+}
+
+// ── Projected FTA tree — fetches live tree from /analysis/fta ─────────────────
+// Each node is clickable and shows its description + sensor list in a tooltip.
+async function renderProjFtaTree(projectedIds) {
+  const container = document.getElementById("proj-fta-container");
+  if (!container) return;
+
+  let ftaRoot;
+  try {
+    const ftaData = await apiFetch("/analysis/fta");
+    ftaRoot = ftaData.tree;
+  } catch(e) { return; }
+
+  // Wrap label to fit node width (~12 chars per line)
+  function wrapLabel(label) {
+    const words = label.split(/[\s\/]+/);
+    let l1=[],l2=[],cur=l1,cc=0;
+    words.forEach(w=>{ if(cc+w.length>12&&cur===l1){cur=l2;cc=0;} cur.push(w); cc+=w.length+1; });
+    return [l1.join(" "),l2.join(" ")].filter(Boolean).join("\n");
+  }
+  function prep(node){ node._label=wrapLabel(node.label); (node.children||[]).forEach(prep); }
+  const root = JSON.parse(JSON.stringify(ftaRoot));
+  prep(root);
+
+  const NW=90, NH=46, HGAP=12, VGAP=56;
+  const NS = "http://www.w3.org/2000/svg";
+
+  function sw(node) {
+    if (!node.children?.length) return NW+HGAP;
+    return node.children.reduce((s,c)=>s+sw(c),0);
+  }
+
+  function pos(node, x, y) {
+    const s=sw(node);
+    node._x=x+s/2-NW/2; node._y=y;
+    let cx=x;
+    for(const c of(node.children||[])){pos(c,cx,y+NH+VGAP);cx+=sw(c);}
+  }
+  pos(root,0,0);
+
+  let maxX=0,maxY=0;
+  function measure(n){maxX=Math.max(maxX,n._x+NW);maxY=Math.max(maxY,n._y+NH);(n.children||[]).forEach(measure);}
+  measure(root);
+
+  const W=maxX+HGAP, H=maxY+16;
+  const svg=document.createElementNS(NS,"svg");
+  svg.setAttribute("width",W); svg.setAttribute("height",H);
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  svg.style.display="block"; svg.style.maxWidth="100%";
+
+  const el=(p,t)=>{const e=document.createElementNS(NS,t);p.appendChild(e);return e;};
+
+  function draw(node) {
+    const proj=projectedIds.has(node.id);
+    const sev=proj?((window._projFindingsMap?.[node.id]?.severity)||"ACTION"):null;
+    const kids=node.children||[];
+
+    if(kids.length){
+      const px=node._x+NW/2, py=node._y+NH;
+      const busY=py+VGAP*0.44;
+      const vp=el(svg,"line"); vp.setAttribute("x1",px);vp.setAttribute("y1",py);vp.setAttribute("x2",px);vp.setAttribute("y2",busY);
+      vp.setAttribute("stroke",proj?"#e8a02060":"#1e2730"); vp.setAttribute("stroke-width","1");
+      if(kids.length>1){
+        const hl=el(svg,"line");
+        hl.setAttribute("x1",kids[0]._x+NW/2); hl.setAttribute("y1",busY);
+        hl.setAttribute("x2",kids[kids.length-1]._x+NW/2); hl.setAttribute("y2",busY);
+        hl.setAttribute("stroke","#1e2730"); hl.setAttribute("stroke-width","1");
+      }
+      kids.forEach(c=>{
+        const cl=el(svg,"line");
+        cl.setAttribute("x1",c._x+NW/2); cl.setAttribute("y1",busY);
+        cl.setAttribute("x2",c._x+NW/2); cl.setAttribute("y2",c._y);
+        cl.setAttribute("stroke","#1e2730"); cl.setAttribute("stroke-width","1");
+        draw(c);
+      });
+    }
+
+    // Clickable group — shows description + sensors in tooltip on click
+    const g=el(svg,"g");
+    g.style.cursor="pointer";
+    g.addEventListener("click", e => {
+      e.stopPropagation();
+      const svgRect = svg.getBoundingClientRect();
+      const cx = svgRect.left + node._x + NW/2;
+      const cy = svgRect.top + node._y + NH/2;
+      const desc = node.description || "No description available.";
+      const sensors = node.sensors?.length ? "Sensors: " + node.sensors.join(", ") : "Composite — no direct sensor";
+      // If projected, also show when it fires
+      const projInfo = proj && window._projFindingsMap?.[node.id]
+        ? "\nProjected at: day " + window._projFindingsMap[node.id].fires_at_day
+        : "";
+      showInfoTooltip(
+        { clientX:cx, clientY:cy, stopPropagation:()=>{} },
+        node.label,
+        desc + projInfo,
+        sensors
+      );
+    });
+
+    const rect=el(g,"rect");
+    rect.setAttribute("x",node._x); rect.setAttribute("y",node._y);
+    rect.setAttribute("width",NW); rect.setAttribute("height",NH); rect.setAttribute("rx","4");
+    if(proj){
+      rect.setAttribute("fill",sev==="CRITICAL"?"rgba(224,48,64,.15)":"rgba(232,160,32,.12)");
+      rect.setAttribute("stroke",sev==="CRITICAL"?"#e03040":"#e8a020");
+      rect.setAttribute("stroke-width","1.5"); rect.setAttribute("stroke-dasharray","4,2");
+    } else {
+      rect.setAttribute("fill","#141920"); rect.setAttribute("stroke","#1e2730"); rect.setAttribute("stroke-width","0.5");
+    }
+
+    // ID label top-left
+    const idT=el(g,"text");
+    idT.setAttribute("x",node._x+5); idT.setAttribute("y",node._y+10);
+    idT.setAttribute("font-size","7"); idT.setAttribute("font-family","Consolas,monospace");
+    idT.setAttribute("fill",proj?(sev==="CRITICAL"?"#e03040":"#e8a020"):"#3d5060");
+    idT.textContent=node.id;
+
+    // Node label centered
+    const lines=(node._label||node.label).split("\n");
+    lines.forEach((line,i)=>{
+      const t=el(g,"text");
+      t.setAttribute("x",node._x+NW/2);
+      t.setAttribute("y",node._y+(lines.length===1?NH/2+4:NH/2-4+i*13));
+      t.setAttribute("text-anchor","middle"); t.setAttribute("font-size","9.5");
+      t.setAttribute("font-family","Consolas,monospace");
+      t.setAttribute("font-weight",proj?"600":"400");
+      t.setAttribute("fill",proj?(sev==="CRITICAL"?"#f09090":"#f0c060"):"#7a8fa0");
+      t.textContent=line;
+    });
+
+    // Small info dot top-right — hints node is clickable
+    const dot=el(g,"circle");
+    dot.setAttribute("cx",node._x+NW-6); dot.setAttribute("cy",node._y+6); dot.setAttribute("r","2.5");
+    dot.setAttribute("fill",proj?(sev==="CRITICAL"?"#e03040":"#e8a020"):"#253040");
+    dot.setAttribute("opacity","0.7");
+
+    // PROJ badge bottom-right
+    if(proj){
+      const br=el(g,"rect");
+      br.setAttribute("x",node._x+NW-26); br.setAttribute("y",node._y+NH-11);
+      br.setAttribute("width","24"); br.setAttribute("height","9"); br.setAttribute("rx","2");
+      br.setAttribute("fill",sev==="CRITICAL"?"rgba(224,48,64,.35)":"rgba(232,160,32,.35)");
+      const bt=el(g,"text");
+      bt.setAttribute("x",node._x+NW-14); bt.setAttribute("y",node._y+NH-4);
+      bt.setAttribute("text-anchor","middle"); bt.setAttribute("font-size","6.5");
+      bt.setAttribute("font-family","Consolas,monospace");
+      bt.setAttribute("fill",sev==="CRITICAL"?"#e03040":"#e8a020");
+      bt.textContent="PROJ";
+    }
+  }
+
+  draw(root);
+  container.innerHTML="";
+  container.appendChild(svg);
 }
 
 function renderCompareResult({ data, days }) {
@@ -698,8 +848,8 @@ function renderCompareResult({ data, days }) {
   const bestLabel = recommendation.match(/'([^']+)'/)?.[1] || "";
   const scenarioCards = Object.entries(data.scenarios || {}).map(([label, sc]) => {
     const isBest = label === bestLabel;
-    const dw = sc.days_to_first_warning, df = sc.days_to_first_fault, ds = sc.days_to_shutdown;
-    const tv = d => d == null
+    const dw=sc.days_to_first_warning, df=sc.days_to_first_fault, ds=sc.days_to_shutdown;
+    const tv = d => d==null
       ? `<span style="color:var(--green);font-size:16px;font-weight:700">none</span>`
       : `<span style="color:${d<7?"var(--red)":d<21?"var(--amber)":"var(--green)"};font-size:16px;font-weight:700;font-family:var(--mono)">${d.toFixed(1)}d</span>`;
     return `

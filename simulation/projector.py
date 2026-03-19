@@ -17,6 +17,46 @@ from core.constants import (
 
 PROJECTION_STEP_HRS = 1.0
 
+# Maps machine fault codes to the correlation IDs that would fire in the FTA.
+FAULT_CODE_TO_CORRELATIONS = {
+    "FILTER_MAINT_REQD":     ["CORR_001", "CD_001"],
+    "AIR_FILTER_MAINT_REQD": ["CORR_006"],
+    "HIGH_TEMP_T1":          ["CORR_004", "THERMAL"],
+    "TEMP_T1_WARNING":       ["CORR_004"],
+    "HIGH_PRESS_P2":         ["CORR_005", "SOLENOID"],
+}
+
+# Maps component IDs to their FTA correlation IDs and severity.
+# Used when a component's health_pct drops below DEGRADATION_FAULT_PCT (30%)
+# even if no sensor threshold fires — component wear IS a projected fault.
+COMPONENT_TO_CORRELATIONS = {
+    "fluid_filter":       {"ids": ["CORR_001", "CD_001"], "severity": "ACTION",   "label": "Filter loading — delta-P approaching fault threshold"},
+    "separator_element":  {"ids": ["CORR_003", "CORR_005"], "severity": "ACTION", "label": "Separator degraded — T1-T2 efficiency reducing, P1/P2 divergence risk"},
+    "inlet_filter":       {"ids": ["CORR_006"], "severity": "ACTION",             "label": "Inlet filter loading — PSW1 vacuum increasing"},
+    "thermal_valve":      {"ids": ["CORR_004", "CD_002"], "severity": "ACTION",   "label": "Thermal valve worn — T1 model deviation developing"},
+    "oil_cooler":         {"ids": ["CORR_004"], "severity": "ACTION",             "label": "Oil cooler degraded — T1 thermal rise risk"},
+    "shaft_seal":         {"ids": [], "severity": "ACTION",                        "label": "Shaft seal worn — external oil leakage risk"},
+    "coupling_element":   {"ids": [], "severity": "ACTION",                        "label": "Coupling element worn — vibration risk"},
+    "main_motor_bearing": {"ids": [], "severity": "ACTION",                        "label": "Motor bearing worn — vibration and heat risk"},
+    "solenoid_valve":     {"ids": ["CORR_005", "SOLENOID"], "severity": "ACTION", "label": "Solenoid degraded — unload circuit at risk"},
+    "blowdown_valve":     {"ids": ["CORR_005"], "severity": "ACTION",             "label": "Blowdown valve degraded — unload risk"},
+}
+
+# Human-readable labels for each correlation ID used in annotations
+CORRELATION_LABELS = {
+    "CORR_001": "Filter delta-P fault threshold",
+    "CORR_002": "Oil flow vs discharge temperature",
+    "CORR_003": "T1–T2 separator efficiency delta",
+    "CORR_004": "T1 above thermodynamic model",
+    "CORR_005": "P1/P2 pressure divergence",
+    "CORR_006": "Inlet vs fluid restriction",
+    "CD_001":   "Silent filter bypass (composite)",
+    "CD_002":   "Thermal valve stuck open (composite)",
+    "CD_003":   "Pre-alarm separator failure (composite)",
+    "SOLENOID": "Solenoid / blowdown valve failure",
+    "THERMAL":  "Thermal shutdown branch",
+}
+
 
 class ProjectionResult:
 
@@ -31,10 +71,11 @@ class ProjectionResult:
         self.risk_summary: str = ""
         self.mitigations: list = []
         self.projection_days: float = 0
-        # Pre-existing faults at projection start — not "predictions"
         self.active_faults_at_start: list = []
         self.already_faulted: bool = False
         self.already_shutdown: bool = False
+        self.projected_findings: list = []
+        self.chart_annotations: dict = {}
 
     def to_dict(self) -> dict:
         return {
@@ -47,7 +88,6 @@ class ProjectionResult:
                                 if self.days_to_shutdown else None,
             "first_warning_type": self.first_warning_type,
             "first_fault_type": self.first_fault_type,
-            # These distinguish "already broken" from "will break in N days"
             "already_faulted": self.already_faulted,
             "already_shutdown": self.already_shutdown,
             "active_faults_at_start": self.active_faults_at_start,
@@ -55,6 +95,8 @@ class ProjectionResult:
             "mitigations": self.mitigations,
             "component_trajectories": self.component_trajectories,
             "sensor_trajectory": self.sensor_trajectory,
+            "projected_findings": self.projected_findings,
+            "chart_annotations": self.chart_annotations,
         }
 
 
@@ -66,7 +108,6 @@ def project(
     setpoint_psi: Optional[float] = None,
     defer_services: Optional[dict] = None,
 ) -> ProjectionResult:
-    # Deep copy — never modify the live state
     sim = deepcopy(state)
 
     if load_pct is not None:
@@ -85,8 +126,6 @@ def project(
     result = ProjectionResult()
     result.projection_days = days
 
-    # ── Check for pre-existing faults BEFORE the projection starts ──────────
-    # This is the critical distinction: faults present NOW vs faults that develop.
     initial_faults = sim.get_active_faults()
     result.active_faults_at_start = initial_faults
 
@@ -97,7 +136,6 @@ def project(
         if sev in ("SHUTDOWN", "MAINTENANCE"):
             result.already_faulted = True
 
-    # Initialise component trajectories
     for cid in sim.components:
         result.component_trajectories[cid] = []
 
@@ -110,18 +148,14 @@ def project(
 
     next_sample = 0.0
 
+    recorded_fault_codes: set = set(f.get("code") for f in initial_faults)
+    recorded_correlation_ids: set = set()
+
     while elapsed_hours < total_hours:
         step = min(PROJECTION_STEP_HRS, total_hours - elapsed_hours)
 
         for cid, component in sim.components.items():
-            if defer_services and cid in defer_services:
-                defer_hrs = defer_services[cid] * 24.0
-                if component.operating_hours < defer_hrs:
-                    component.degrade(step, load_mult, temp_mult)
-                else:
-                    component.degrade(step, load_mult, temp_mult)
-            else:
-                component.degrade(step, load_mult, temp_mult)
+            component.degrade(step, load_mult, temp_mult)
 
         sim.total_hours += step
         elapsed_hours += step
@@ -132,19 +166,56 @@ def project(
             severity = fault.get("severity")
             code = fault.get("code")
 
-            # Only record as a "new" development if it wasn't already present
-            already = any(f.get("code") == code for f in initial_faults)
+            if code in recorded_fault_codes:
+                continue
 
-            if severity == "WARNING" and result.days_to_first_warning is None and not already:
+            recorded_fault_codes.add(code)
+
+            if severity == "WARNING" and result.days_to_first_warning is None:
                 result.days_to_first_warning = elapsed_days
                 result.first_warning_type = code
 
-            if severity == "MAINTENANCE" and result.days_to_first_fault is None and not already:
+            if severity == "MAINTENANCE" and result.days_to_first_fault is None:
                 result.days_to_first_fault = elapsed_days
                 result.first_fault_type = code
 
-            if severity == "SHUTDOWN" and result.days_to_shutdown is None and not already:
+            if severity == "SHUTDOWN" and result.days_to_shutdown is None:
                 result.days_to_shutdown = elapsed_days
+
+            # Map fault code to FTA correlation IDs
+            for corr_id in FAULT_CODE_TO_CORRELATIONS.get(code, []):
+                if corr_id not in recorded_correlation_ids:
+                    recorded_correlation_ids.add(corr_id)
+                    proj_severity = "CRITICAL" if severity == "SHUTDOWN" else "ACTION"
+                    result.projected_findings.append({
+                        "correlation_id": corr_id,
+                        "fires_at_day": round(elapsed_days, 1),
+                        "severity": proj_severity,
+                        "fault_code": code,
+                        "label": CORRELATION_LABELS.get(corr_id, corr_id),
+                        "interpretation": f"Projected to activate at day {elapsed_days:.0f} — {CORRELATION_LABELS.get(corr_id, code)}",
+                    })
+
+        # Check component health — components crossing fault threshold (≤30%)
+        # generate projected FTA events even if no sensor alarm fires yet.
+        # This covers separators, bearings, seals etc. that degrade silently.
+        for cid, component in sim.components.items():
+            if component.health_pct <= DEGRADATION_FAULT_PCT:
+                comp_info = COMPONENT_TO_CORRELATIONS.get(cid, {})
+                comp_key = f"COMP_{cid}"
+                if comp_key not in recorded_fault_codes and comp_info:
+                    recorded_fault_codes.add(comp_key)
+                    for corr_id in comp_info.get("ids", []):
+                        if corr_id not in recorded_correlation_ids:
+                            recorded_correlation_ids.add(corr_id)
+                            result.projected_findings.append({
+                                "correlation_id": corr_id,
+                                "fires_at_day": round(elapsed_days, 1),
+                                "severity": comp_info["severity"],
+                                "fault_code": comp_key,
+                                "label": CORRELATION_LABELS.get(corr_id, corr_id),
+                                "interpretation": f"Projected at day {elapsed_days:.0f} — {comp_info['label']}",
+                            })
 
         if elapsed_hours >= next_sample:
             reading = sim.compute_sensors()
@@ -161,15 +232,108 @@ def project(
 
     result.risk_summary = _build_risk_summary(result, sim, days)
     result.mitigations = _build_mitigations(result, sim, state)
+    result.chart_annotations = _build_chart_annotations(result, sim)
 
     return result
+
+
+def _build_chart_annotations(result: ProjectionResult,
+                               final_state: MachineState) -> dict:
+    annotations = {}
+
+    for cid, traj in result.component_trajectories.items():
+        if not traj:
+            continue
+        start_health = traj[0]["health_pct"]
+        end_health = traj[-1]["health_pct"]
+        fault_threshold = 30.0
+        fault_cross_day = None
+        for point in traj:
+            if point["health_pct"] <= fault_threshold:
+                fault_cross_day = point["day"]
+                break
+        comp_name = cid.replace("_", " ").title()
+        annotation = {
+            "component": cid,
+            "label": comp_name,
+            "start_health_pct": round(start_health, 1),
+            "end_health_pct": round(end_health, 1),
+            "fault_threshold_pct": fault_threshold,
+            "fault_cross_day": fault_cross_day,
+            "chart_title": f"{comp_name} — {end_health:.0f}% at day {result.projection_days:.0f}",
+            "status": (
+                "critical" if end_health < 30 else
+                "degraded" if end_health < 70 else
+                "healthy"
+            ),
+        }
+        if fault_cross_day is not None:
+            annotation["fault_annotation"] = (
+                f"Fault threshold crossed at day {fault_cross_day:.0f} — service required"
+            )
+        annotations[cid] = annotation
+
+    warn_f = DISCHARGE_TEMP_WARNING_F
+    shutdown_f = DISCHARGE_TEMP_SHUTDOWN_F
+    t1_warn_day = None
+    t1_shutdown_day = None
+    for point in result.sensor_trajectory:
+        t1 = point.get("T1")
+        if t1 is None:
+            continue
+        if t1_warn_day is None and t1 >= warn_f:
+            t1_warn_day = point["day"]
+        if t1_shutdown_day is None and t1 >= shutdown_f:
+            t1_shutdown_day = point["day"]
+
+    annotations["T1"] = {
+        "sensor": "T1",
+        "label": "Wet Discharge Temperature",
+        "warn_threshold_f": warn_f,
+        "warn_threshold_c": round((warn_f - 32) * 5/9, 1),
+        "shutdown_threshold_f": shutdown_f,
+        "shutdown_threshold_c": round((shutdown_f - 32) * 5/9, 1),
+        "warn_day": t1_warn_day,
+        "shutdown_day": t1_shutdown_day,
+        "warn_annotation": (
+            f"Temperature warning (195°F / 90.6°C) reached at day {t1_warn_day:.0f}"
+            if t1_warn_day else None
+        ),
+        "shutdown_annotation": (
+            f"Thermal shutdown (200°F / 93.3°C) reached at day {t1_shutdown_day:.0f}"
+            if t1_shutdown_day else None
+        ),
+        "chart_title": "T1 Wet Discharge Temperature Forecast",
+    }
+
+    dp_fault_psi = FLUID_FILTER_DELTA_P_FAULT_PSI
+    dp_fault_day = None
+    for point in result.sensor_trajectory:
+        dp = point.get("P4_P3_delta")
+        if dp is not None and dp >= dp_fault_psi:
+            dp_fault_day = point["day"]
+            break
+
+    annotations["P4_P3_delta"] = {
+        "sensor": "P4_P3_delta",
+        "label": "Filter Differential Pressure (P4–P3)",
+        "fault_threshold_psi": dp_fault_psi,
+        "fault_threshold_bar": round(dp_fault_psi * 0.0689476, 2),
+        "fault_day": dp_fault_day,
+        "chart_title": "Filter Differential Pressure Trajectory",
+        "fault_annotation": (
+            f"FILTER MAINT REQD threshold reached at day {dp_fault_day:.0f} — replace fluid filter element"
+            if dp_fault_day else None
+        ),
+    }
+
+    return annotations
 
 
 def _build_risk_summary(result: ProjectionResult,
                          final_state: MachineState,
                          projection_days: float) -> str:
 
-    # Already-broken case — separate messaging
     if result.already_shutdown:
         codes = [f.get("code") for f in result.active_faults_at_start
                  if f.get("severity") == "SHUTDOWN"]
@@ -222,13 +386,12 @@ def _build_mitigations(result: ProjectionResult,
     mitigations = []
     components = final_state.components
 
-    # Solenoid valve — add explicit mitigation if at fault
     sol = components.get("solenoid_valve")
     if sol and sol.health_pct < 20:
         mitigations.append({
             "action": "Replace solenoid valve SOL1",
             "urgency": "immediate",
-            "reason": f"Solenoid health at {sol.health_pct:.0f}% — machine cannot unload, P2 exceeds setpoint",
+            "reason": f"Solenoid health at {sol.health_pct:.0f}% — machine cannot unload",
             "impact": "Clears HIGH_PRESS_P2 shutdown condition immediately",
         })
 
@@ -276,8 +439,8 @@ def _build_mitigations(result: ProjectionResult,
             "action": f"Before increasing pressure by {delta_psi:.0f}psi — service fluid filter first",
             "urgency": "prerequisite",
             "reason": "Higher pressure increases thermal load — degraded filter compounds risk",
-            "impact": f"Reduces projected risk window from {result.days_to_shutdown or '>30'} days "
-                      f"to estimated 30+ days post-service",
+            "impact": f"Reduces projected risk window from "
+                      f"{result.days_to_shutdown or '>30'} days to estimated 30+ days post-service",
         })
 
     if final_state.load_pct > original_state.load_pct + 10:
