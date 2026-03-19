@@ -148,8 +148,23 @@ def project(
 
     next_sample = 0.0
 
-    recorded_fault_codes: set = set(f.get("code") for f in initial_faults)
+    # Track (code, severity) pairs already active at start so we don't
+    # double-count them, but still detect escalations (MAINTENANCE→SHUTDOWN)
+    # and new faults on different components.
+    recorded_fault_sigs: set = set(
+        (f.get("code"), f.get("severity")) for f in initial_faults
+    )
     recorded_correlation_ids: set = set()
+
+    # If machine is already faulted/shutdown at day 0, record timing now
+    for fault in initial_faults:
+        sev = fault.get("severity")
+        code = fault.get("code")
+        if sev == "MAINTENANCE" and result.days_to_first_fault is None:
+            result.days_to_first_fault = 0.0
+            result.first_fault_type = code
+        if sev == "SHUTDOWN" and result.days_to_shutdown is None:
+            result.days_to_shutdown = 0.0
 
     while elapsed_hours < total_hours:
         step = min(PROJECTION_STEP_HRS, total_hours - elapsed_hours)
@@ -166,10 +181,11 @@ def project(
             severity = fault.get("severity")
             code = fault.get("code")
 
-            if code in recorded_fault_codes:
+            sig = (code, severity)
+            if sig in recorded_fault_sigs:
                 continue
 
-            recorded_fault_codes.add(code)
+            recorded_fault_sigs.add(sig)
 
             if severity == "WARNING" and result.days_to_first_warning is None:
                 result.days_to_first_warning = elapsed_days
@@ -198,13 +214,13 @@ def project(
 
         # Check component health — components crossing fault threshold (≤30%)
         # generate projected FTA events even if no sensor alarm fires yet.
-        # This covers separators, bearings, seals etc. that degrade silently.
         for cid, component in sim.components.items():
             if component.health_pct <= DEGRADATION_FAULT_PCT:
                 comp_info = COMPONENT_TO_CORRELATIONS.get(cid, {})
                 comp_key = f"COMP_{cid}"
-                if comp_key not in recorded_fault_codes and comp_info:
-                    recorded_fault_codes.add(comp_key)
+                comp_sig = (comp_key, "ACTION")
+                if comp_sig not in recorded_fault_sigs and comp_info:
+                    recorded_fault_sigs.add(comp_sig)
                     for corr_id in comp_info.get("ids", []):
                         if corr_id not in recorded_correlation_ids:
                             recorded_correlation_ids.add(corr_id)
@@ -473,15 +489,40 @@ def compare_scenarios(
 
 
 def _pick_best_scenario(results: dict) -> str:
+    """
+    Score each scenario by how long before a hard shutdown, then by
+    how long before first fault. Scenarios with no shutdown projected
+    score better than those with one, even if both are already faulted.
+    Already-faulted but no shutdown risk scores higher than a clean
+    scenario heading for shutdown.
+    """
     best = None
-    best_days = -1
+    best_score = (-1, -1)   # (days_to_shutdown_score, days_to_fault_score)
 
     for label, result in results.items():
-        fault_day = result.get("days_to_first_fault") or result["projection_days"]
-        if fault_day > best_days:
-            best_days = fault_day
+        proj_days = result["projection_days"]
+
+        # Shutdown score: days until shutdown (proj_days+1 if none projected)
+        raw_shut = result.get("days_to_shutdown")
+        shut_score = proj_days + 1 if raw_shut is None else raw_shut
+
+        # Fault score: days until first fault (proj_days+1 if none projected)
+        raw_fault = result.get("days_to_first_fault")
+        fault_score = proj_days + 1 if raw_fault is None else raw_fault
+
+        score = (shut_score, fault_score)
+        if score > best_score:
+            best_score = score
             best = label
 
     if best:
-        return f"Recommended: '{best}' — latest fault projection at day {best_days:.0f}"
+        shut = results[best].get("days_to_shutdown")
+        fault = results[best].get("days_to_first_fault")
+        if shut is None and fault is None:
+            detail = f"no shutdown or new fault projected in {results[best]['projection_days']:.0f}d"
+        elif shut is None:
+            detail = f"no shutdown projected, first fault at day {fault:.0f}"
+        else:
+            detail = f"latest shutdown projection at day {shut:.0f}"
+        return f"Recommended: '{best}' — {detail}"
     return "No clear recommendation — review scenarios manually"

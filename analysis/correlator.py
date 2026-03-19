@@ -22,6 +22,32 @@ from core.thermodynamics import (
 )
 
 
+# ── Unit formatting helpers ───────────────────────────────────────────────────
+# All sensor readings are stored in imperial (PSI, °F, in.wc).
+# These helpers produce dual-unit strings so findings are readable
+# regardless of frontend unit setting.
+
+def _psi(v: float) -> str:
+    """Format pressure in both bar and psi."""
+    return f"{v * 0.0689476:.1f}bar ({v:.0f}psi)"
+
+def _f(v: float) -> str:
+    """Format temperature in both °C and °F."""
+    return f"{(v - 32) * 5/9:.1f}°C ({v:.0f}°F)"
+
+def _wc(v: float) -> str:
+    """Format vacuum in both mbar and in.wc."""
+    return f"{v * 2.4884:.1f}mbar ({v:.1f}in.wc)"
+
+def _dpsi(v: float) -> str:
+    """Format delta pressure in both bar and psi."""
+    return f"{v * 0.0689476:.2f}bar ({v:.1f}psi)"
+
+def _df(v: float) -> str:
+    """Format temperature delta in both °C and °F."""
+    return f"{v * 5/9:.1f}°C ({v:.1f}°F)"
+
+
 class CorrelationFinding:
     def __init__(self, correlation_id: str, pattern: str,
                  interpretation: str, confidence: str,
@@ -86,7 +112,7 @@ def _check_corr_001(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_001",
             "P4_P3_delta_at_fault_threshold",
-            f"Fluid filter differential pressure at {delta:.1f}psi — FILTER MAINT REQD threshold reached",
+            f"Fluid filter differential pressure at {_dpsi(delta)} — FILTER MAINT REQD threshold reached",
             "MANUAL",
             "ACTION",
             ["P3", "P4"],
@@ -97,7 +123,7 @@ def _check_corr_001(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_001",
             "P4_P3_delta_approaching_fault",
-            f"Filter differential at {delta:.1f}psi — approaching 20psi fault threshold",
+            f"Filter differential at {_dpsi(delta)} — approaching 1.38bar (20psi) fault threshold",
             "MANUAL",
             "WARNING",
             ["P3", "P4"],
@@ -154,7 +180,7 @@ def _check_corr_003(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_003",
             "T2_exceeds_T1",
-            f"T2 ({reading.T2:.0f}°F) exceeds T1 ({reading.T1:.0f}°F) — "
+            f"T2 ({_f(reading.T2)}) exceeds T1 ({_f(reading.T1)}) — "
             "separator element ruptured, hot oil bypassing directly to discharge",
             "DERIVED",
             "CRITICAL",
@@ -166,7 +192,7 @@ def _check_corr_003(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_003",
             "T1_T2_gap_critically_narrow",
-            f"T1-T2 gap only {delta:.1f}°F — separator near failure, "
+            f"T1-T2 gap only {_df(delta)} — separator near failure, "
             "oil carryover into service line",
             "DERIVED",
             "ACTION",
@@ -179,7 +205,7 @@ def _check_corr_003(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_003",
             "T1_T2_gap_narrowing",
-            f"T1-T2 gap narrowing at {delta:.1f}°F — separator efficiency reducing",
+            f"T1-T2 gap narrowing at {_df(delta)} — separator efficiency reducing",
             "DERIVED",
             "WARNING",
             ["T1", "T2"],
@@ -203,8 +229,8 @@ def _check_corr_004(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_004",
             "T1_above_model_action",
-            f"T1 running {deviation:.1f}°F above thermodynamic model prediction "
-            f"at current load ({reading.load_pct:.0f}%) and ambient ({reading.ambient_f:.0f}°F). "
+            f"T1 running {_df(deviation)} above thermodynamic model prediction "
+            f"at current load ({reading.load_pct:.0f}%) and ambient ({_f(reading.ambient_f)}). "
             "Thermal system degradation detected before threshold breach.",
             "SYNTHETIC",
             "ACTION",
@@ -216,7 +242,7 @@ def _check_corr_004(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_004",
             "T1_above_model_warning",
-            f"T1 running {deviation:.1f}°F above model — early thermal degradation signal",
+            f"T1 running {_df(deviation)} above model — early thermal degradation signal",
             "SYNTHETIC",
             "WARNING",
             ["T1", "ambient"],
@@ -227,8 +253,8 @@ def _check_corr_004(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_004",
             "T1_below_model_overcooling",
-            f"T1 running {abs(deviation):.1f}°F BELOW model — possible thermal valve stuck open. "
-            f"Overcooling risk at current ambient ({reading.ambient_f:.0f}°F).",
+            f"T1 running {_df(abs(deviation))} BELOW model — possible thermal valve stuck open. "
+            f"Overcooling risk at current ambient ({_f(reading.ambient_f)}).",
             "DERIVED",
             "WARNING",
             ["T1", "ambient"],
@@ -247,7 +273,7 @@ def _check_corr_005(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CORR_005",
             "P1_exceeds_P2",
-            f"Sump pressure P1 ({reading.P1:.0f}psi) exceeds line pressure P2 ({reading.P2:.0f}psi) "
+            f"Sump pressure P1 ({_psi(reading.P1)}) exceeds line pressure P2 ({_psi(reading.P2)}) "
             "— separator restriction building",
             "DERIVED",
             "ACTION",
@@ -298,7 +324,7 @@ def _check_composite_cd001(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CD_001",
             "silent_filter_bypass_suspected",
-            f"Filter at {filter_hrs:.0f} operating hours but P4-P3 delta only {delta:.1f}psi "
+            f"Filter at {filter_hrs:.0f} operating hours but P4-P3 delta only {_dpsi(delta)} "
             f"and T1 normal. Classic silent bypass signature — filter bypass valve likely open. "
             f"No alarms will fire but unfiltered oil is reaching the air end.",
             "DERIVED",
@@ -329,8 +355,8 @@ def _check_composite_cd002(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CD_002",
             "thermal_valve_stuck_open_suspected",
-            f"T1 running {abs(deviation):.1f}°F below model at {reading.load_pct:.0f}% load "
-            f"and {reading.ambient_f:.0f}°F ambient. Overcooling at these conditions indicates "
+            f"T1 running {_df(abs(deviation))} below model at {reading.load_pct:.0f}% load "
+            f"and {_f(reading.ambient_f)} ambient. Overcooling at these conditions indicates "
             f"thermal valve stuck open — routing all oil through cooler regardless of temperature.",
             "DERIVED",
             "WARNING",
@@ -353,7 +379,7 @@ def _check_composite_cd003(reading: SensorReading, state: MachineState) -> list:
         findings.append(CorrelationFinding(
             "CD_003",
             "separator_failure_developing_pre_alarm",
-            f"T1-T2 gap at {reading.T1_T2_delta:.1f}°F AND P1 elevated at {reading.P1:.0f}psi "
+            f"T1-T2 gap at {_df(reading.T1_T2_delta)} AND P1 elevated at {_psi(reading.P1)} "
             f"— separator restriction developing. dP alarm not yet triggered but trajectory "
             f"indicates breach within projection window.",
             "DERIVED",
