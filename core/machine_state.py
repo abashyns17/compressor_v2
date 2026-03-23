@@ -40,7 +40,6 @@ class SensorReading:
     load_pct: float
     ambient_f: float
 
-    # Derived signals
     @property
     def P4_P3_delta(self) -> float:
         return self.P4 - self.P3
@@ -71,23 +70,19 @@ class MachineState:
     """
     Complete state of the LS110 at a point in time.
     """
-    # Operating conditions
     load_pct: float = 75.0
     ambient_f: float = 77.0
     setpoint_psi: float = 110.0
     total_hours: float = 5000.0
 
-    # Fault injection flags (override normal physics)
     fault_thermal_valve_stuck_open: bool = False
     fault_thermal_valve_stuck_closed: bool = False
     fault_solenoid_stuck_closed: bool = False
     fault_blowdown_stuck: bool = False
     fault_filter_bypass_open: bool = False
 
-    # Components — initialised via factory
     components: dict = field(default_factory=dict)
 
-    # Internal state
     _running: bool = True
     _simulation_speed: float = 1.0
 
@@ -96,8 +91,6 @@ class MachineState:
             self.components = build_component_registry(
                 total_machine_hrs=self.total_hours
             )
-
-    # ── Sensor computation ────────────────────────────────────────────────────
 
     def compute_sensors(self) -> SensorReading:
         components = self.components
@@ -159,16 +152,12 @@ class MachineState:
             ambient_f=self.ambient_f,
         )
 
-    # ── Time advancement ──────────────────────────────────────────────────────
-
     def advance(self, hours: float):
         load_mult = get_load_multiplier(self.load_pct)
         temp_mult = get_ambient_multiplier(self.ambient_f)
         for component in self.components.values():
             component.degrade(hours, load_mult, temp_mult)
         self.total_hours += hours
-
-    # ── Status ────────────────────────────────────────────────────────────────
 
     def get_active_faults(self) -> list:
         reading = self.compute_sensors()
@@ -193,6 +182,26 @@ class MachineState:
         if self.fault_solenoid_stuck_closed and reading.P2 > self.setpoint_psi + 10:
             faults.append({"code": "HIGH_PRESS_P2", "severity": "SHUTDOWN",
                            "value": reading.P2, "threshold": self.setpoint_psi + 10})
+
+        # ── Cascade shutdown conditions ────────────────────────────────────────
+        # These fire organically from component health, not from fault flags.
+
+        # 1. Separator near-failure → sump cannot equalise → overpressure shutdown
+        sep_health = self.components["separator_element"].health_pct
+        if sep_health < 10 and reading.P1 > self.setpoint_psi + 8:
+            faults.append({"code": "SEPARATOR_OVERPRESSURE_SHUTDOWN", "severity": "SHUTDOWN",
+                           "value": reading.P1, "threshold": self.setpoint_psi + 8})
+
+        # 2. Inlet restriction + high load → motor overload trip
+        if reading.PSW1 >= INLET_FILTER_VACUUM_FAULT_WC and self.load_pct > 85:
+            faults.append({"code": "MOTOR_OVERLOAD_SHUTDOWN", "severity": "SHUTDOWN",
+                           "value": reading.PSW1, "threshold": INLET_FILTER_VACUUM_FAULT_WC})
+
+        # 3. Solenoid organic degradation → unload failure → overpressure
+        sol_health = self.components["solenoid_valve"].health_pct
+        if sol_health < 15 and reading.P2 > self.setpoint_psi + 8:
+            faults.append({"code": "HIGH_PRESS_P2", "severity": "SHUTDOWN",
+                           "value": reading.P2, "threshold": self.setpoint_psi + 8})
 
         return faults
 

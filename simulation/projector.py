@@ -17,18 +17,16 @@ from core.constants import (
 
 PROJECTION_STEP_HRS = 1.0
 
-# Maps machine fault codes to the correlation IDs that would fire in the FTA.
 FAULT_CODE_TO_CORRELATIONS = {
     "FILTER_MAINT_REQD":     ["CORR_001", "CD_001"],
     "AIR_FILTER_MAINT_REQD": ["CORR_006"],
     "HIGH_TEMP_T1":          ["CORR_004", "THERMAL"],
     "TEMP_T1_WARNING":       ["CORR_004"],
     "HIGH_PRESS_P2":         ["CORR_005", "SOLENOID"],
+    "SEPARATOR_OVERPRESSURE_SHUTDOWN": ["CORR_003", "CORR_005"],
+    "MOTOR_OVERLOAD_SHUTDOWN":         ["CORR_006"],
 }
 
-# Maps component IDs to their FTA correlation IDs and severity.
-# Used when a component's health_pct drops below DEGRADATION_FAULT_PCT (30%)
-# even if no sensor threshold fires — component wear IS a projected fault.
 COMPONENT_TO_CORRELATIONS = {
     "fluid_filter":       {"ids": ["CORR_001", "CD_001"], "severity": "ACTION",   "label": "Filter loading — delta-P approaching fault threshold"},
     "separator_element":  {"ids": ["CORR_003", "CORR_005"], "severity": "ACTION", "label": "Separator degraded — T1-T2 efficiency reducing, P1/P2 divergence risk"},
@@ -42,7 +40,6 @@ COMPONENT_TO_CORRELATIONS = {
     "blowdown_valve":     {"ids": ["CORR_005"], "severity": "ACTION",             "label": "Blowdown valve degraded — unload risk"},
 }
 
-# Human-readable labels for each correlation ID used in annotations
 CORRELATION_LABELS = {
     "CORR_001": "Filter delta-P fault threshold",
     "CORR_002": "Oil flow vs discharge temperature",
@@ -76,6 +73,7 @@ class ProjectionResult:
         self.already_shutdown: bool = False
         self.projected_findings: list = []
         self.chart_annotations: dict = {}
+        self.timeline: list = []  # chronological event stream
 
     def to_dict(self) -> dict:
         return {
@@ -97,6 +95,7 @@ class ProjectionResult:
             "sensor_trajectory": self.sensor_trajectory,
             "projected_findings": self.projected_findings,
             "chart_annotations": self.chart_annotations,
+            "timeline": self.timeline,
         }
 
 
@@ -143,20 +142,19 @@ def project(
     elapsed_hours = 0.0
     sample_interval = 24.0
 
+    # load_mult is fixed — load_pct doesn't change during projection
     load_mult = get_load_multiplier(sim.load_pct)
-    temp_mult = get_ambient_multiplier(sim.ambient_f)
+    # temp_mult is recomputed each step from actual T1 — see loop
 
     next_sample = 0.0
 
-    # Track (code, severity) pairs already active at start so we don't
-    # double-count them, but still detect escalations (MAINTENANCE→SHUTDOWN)
-    # and new faults on different components.
+    # Track (code, severity) pairs to detect escalations (MAINTENANCE→SHUTDOWN)
     recorded_fault_sigs: set = set(
         (f.get("code"), f.get("severity")) for f in initial_faults
     )
     recorded_correlation_ids: set = set()
 
-    # If machine is already faulted/shutdown at day 0, record timing now
+    # Record day-0 fault timing for already-active faults
     for fault in initial_faults:
         sev = fault.get("severity")
         code = fault.get("code")
@@ -168,6 +166,12 @@ def project(
 
     while elapsed_hours < total_hours:
         step = min(PROJECTION_STEP_HRS, total_hours - elapsed_hours)
+
+        # ── Change 1: dynamic temp_mult from actual running T1 ─────────────────
+        # Cascades propagate: filter degrades → T1 rises → other components
+        # degrade faster. Without this, all component health lines are straight.
+        _reading_now = sim.compute_sensors()
+        temp_mult = get_ambient_multiplier(_reading_now.T1)
 
         for cid, component in sim.components.items():
             component.degrade(step, load_mult, temp_mult)
@@ -198,7 +202,6 @@ def project(
             if severity == "SHUTDOWN" and result.days_to_shutdown is None:
                 result.days_to_shutdown = elapsed_days
 
-            # Map fault code to FTA correlation IDs
             for corr_id in FAULT_CODE_TO_CORRELATIONS.get(code, []):
                 if corr_id not in recorded_correlation_ids:
                     recorded_correlation_ids.add(corr_id)
@@ -212,8 +215,7 @@ def project(
                         "interpretation": f"Projected to activate at day {elapsed_days:.0f} — {CORRELATION_LABELS.get(corr_id, code)}",
                     })
 
-        # Check component health — components crossing fault threshold (≤30%)
-        # generate projected FTA events even if no sensor alarm fires yet.
+        # Component health crossings — FTA events even without sensor alarm
         for cid, component in sim.components.items():
             if component.health_pct <= DEGRADATION_FAULT_PCT:
                 comp_info = COMPONENT_TO_CORRELATIONS.get(cid, {})
@@ -249,8 +251,128 @@ def project(
     result.risk_summary = _build_risk_summary(result, sim, days)
     result.mitigations = _build_mitigations(result, sim, state)
     result.chart_annotations = _build_chart_annotations(result, sim)
+    result.timeline = _build_timeline(result)  # Change 3: event stream
 
     return result
+
+
+# ── Change 3: Timeline event stream ──────────────────────────────────────────
+
+def _build_timeline(result: ProjectionResult) -> list:
+    """
+    Merge all projection events into a single sorted chronological list.
+    Each event: { day, type, severity, code, title, description }
+    Types: FAULT_START | SHUTDOWN | WARNING | COMPONENT_FAULT | SENSOR_THRESHOLD
+    """
+    events = []
+
+    # Day-0 active faults
+    for fault in result.active_faults_at_start:
+        sev = fault.get("severity", "")
+        code = fault.get("code", "")
+        events.append({
+            "day": 0.0,
+            "type": "SHUTDOWN" if sev == "SHUTDOWN" else "FAULT_START",
+            "severity": sev,
+            "code": code,
+            "title": _fault_title(code),
+            "description": f"Active at start — {_fault_title(code)}",
+        })
+
+    # Projected findings (sensor faults and component crossings)
+    for f in result.projected_findings:
+        code = f.get("fault_code", "")
+        sev = f["severity"]
+        if code.startswith("COMP_"):
+            events.append({
+                "day": f["fires_at_day"],
+                "type": "COMPONENT_FAULT",
+                "severity": sev,
+                "code": f["correlation_id"],
+                "title": f["label"],
+                "description": f["interpretation"],
+            })
+        else:
+            events.append({
+                "day": f["fires_at_day"],
+                "type": "SHUTDOWN" if sev == "CRITICAL" else "SENSOR_THRESHOLD",
+                "severity": sev,
+                "code": f["correlation_id"],
+                "title": f["label"],
+                "description": f["interpretation"],
+            })
+
+    # Component health fault crossings from annotations
+    for cid, ann in result.chart_annotations.items():
+        if not isinstance(ann, dict):
+            continue
+        fcd = ann.get("fault_cross_day")
+        if fcd is not None and cid not in ("T1", "P4_P3_delta"):
+            comp_name = cid.replace("_", " ").title()
+            events.append({
+                "day": fcd,
+                "type": "COMPONENT_FAULT",
+                "severity": "ACTION",
+                "code": f"COMP_{cid.upper()}",
+                "title": f"{comp_name} at fault threshold",
+                "description": ann.get("fault_annotation", f"{comp_name} health crossed 30%"),
+            })
+
+    # T1 sensor events
+    t1_ann = result.chart_annotations.get("T1", {})
+    if t1_ann.get("warn_day") is not None:
+        events.append({
+            "day": t1_ann["warn_day"],
+            "type": "WARNING",
+            "severity": "WARNING",
+            "code": "TEMP_T1_WARNING",
+            "title": "T1 warning threshold",
+            "description": t1_ann.get("warn_annotation", "T1 approaching warning limit"),
+        })
+    if t1_ann.get("shutdown_day") is not None:
+        events.append({
+            "day": t1_ann["shutdown_day"],
+            "type": "SHUTDOWN",
+            "severity": "CRITICAL",
+            "code": "HIGH_TEMP_T1",
+            "title": "T1 thermal shutdown",
+            "description": t1_ann.get("shutdown_annotation", "T1 reached shutdown threshold"),
+        })
+
+    # Filter delta-P event
+    dp_ann = result.chart_annotations.get("P4_P3_delta", {})
+    if dp_ann.get("fault_day") is not None:
+        events.append({
+            "day": dp_ann["fault_day"],
+            "type": "SENSOR_THRESHOLD",
+            "severity": "ACTION",
+            "code": "FILTER_MAINT_REQD",
+            "title": "Filter delta-P fault",
+            "description": dp_ann.get("fault_annotation", "FILTER MAINT REQD threshold reached"),
+        })
+
+    # Deduplicate by (day, code) and sort
+    seen = set()
+    unique = []
+    for e in sorted(events, key=lambda x: x["day"]):
+        key = (round(e["day"], 1), e["code"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(e)
+
+    return unique
+
+
+def _fault_title(code: str) -> str:
+    return {
+        "FILTER_MAINT_REQD":               "Filter maintenance required",
+        "AIR_FILTER_MAINT_REQD":           "Air filter maintenance required",
+        "HIGH_TEMP_T1":                    "Thermal shutdown — T1 ≥ 200°F",
+        "TEMP_T1_WARNING":                 "Discharge temperature warning",
+        "HIGH_PRESS_P2":                   "High discharge pressure — shutdown",
+        "SEPARATOR_OVERPRESSURE_SHUTDOWN": "Separator failure — overpressure shutdown",
+        "MOTOR_OVERLOAD_SHUTDOWN":         "Motor overload — inlet restriction at high load",
+    }.get(code, code.replace("_", " ").title())
 
 
 def _build_chart_annotations(result: ProjectionResult,
@@ -490,26 +612,18 @@ def compare_scenarios(
 
 def _pick_best_scenario(results: dict) -> str:
     """
-    Score each scenario by how long before a hard shutdown, then by
-    how long before first fault. Scenarios with no shutdown projected
-    score better than those with one, even if both are already faulted.
-    Already-faulted but no shutdown risk scores higher than a clean
-    scenario heading for shutdown.
+    Score on (shutdown_score, fault_score) tuples.
+    Already-faulted but no shutdown risk beats a clean scenario heading for shutdown.
     """
     best = None
-    best_score = (-1, -1)   # (days_to_shutdown_score, days_to_fault_score)
+    best_score = (-1, -1)
 
     for label, result in results.items():
         proj_days = result["projection_days"]
-
-        # Shutdown score: days until shutdown (proj_days+1 if none projected)
         raw_shut = result.get("days_to_shutdown")
         shut_score = proj_days + 1 if raw_shut is None else raw_shut
-
-        # Fault score: days until first fault (proj_days+1 if none projected)
         raw_fault = result.get("days_to_first_fault")
         fault_score = proj_days + 1 if raw_fault is None else raw_fault
-
         score = (shut_score, fault_score)
         if score > best_score:
             best_score = score
