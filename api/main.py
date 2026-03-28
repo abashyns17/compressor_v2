@@ -7,13 +7,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from api.routes import state, scenarios, inject, analysis, predict, logs, diagnose
+from api.routes import settings as settings_route
+from api.routes import weather as weather_route
 from simulation.scenario_engine import build_scenario
+from core.settings import load_settings
 
 import api.routes.state as state_module
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    load_settings()
     initial_state = build_scenario("normal")
     state_module.set_state(initial_state)
     print("Sullair LS110 backend started — normal scenario loaded")
@@ -48,6 +52,8 @@ app.include_router(analysis.router)
 app.include_router(predict.router)
 app.include_router(logs.router)
 app.include_router(diagnose.router)
+app.include_router(settings_route.router)
+app.include_router(weather_route.router)
 
 
 @app.get("/")
@@ -61,8 +67,10 @@ def root():
             "scenarios": "/scenarios/      — load scenarios, advance time",
             "inject":    "/inject/         — fault injection and component control",
             "analysis":  "/analysis/       — correlations, trends, risk assessment",
-            "predict":   "/predict/        — forward projection and what-if scenarios",
+            "predict":   "/predict/        — forward projection, envelope, optimizer",
             "logs":      "/logs/           — sensor history for graph generation",
             "diagnose":  "/diagnose/       — symptom-driven diagnostic engine",
+            "settings":  "/settings/       — weather service and ambient source config",
+            "weather":   "/weather/        — blended ambient temperature profile",
         },
     }

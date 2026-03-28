@@ -74,6 +74,8 @@ class ProjectionResult:
         self.projected_findings: list = []
         self.chart_annotations: dict = {}
         self.timeline: list = []  # chronological event stream
+        self.cascade_chains: list = []  # root cause + downstream sequence
+        self.explanation: dict = {}   # structured plain-English explanation
 
     def to_dict(self) -> dict:
         return {
@@ -96,6 +98,8 @@ class ProjectionResult:
             "projected_findings": self.projected_findings,
             "chart_annotations": self.chart_annotations,
             "timeline": self.timeline,
+            "cascade_chains": self.cascade_chains,
+            "explanation": self.explanation,
         }
 
 
@@ -106,6 +110,7 @@ def project(
     ambient_f: Optional[float] = None,
     setpoint_psi: Optional[float] = None,
     defer_services: Optional[dict] = None,
+    ambient_profile: Optional[list] = None,
 ) -> ProjectionResult:
     sim = deepcopy(state)
 
@@ -154,6 +159,12 @@ def project(
     )
     recorded_correlation_ids: set = set()
 
+    # Cascade chain tracking: detect when temp_mult spikes due to component fault
+    _prev_temp_mult = get_ambient_multiplier(sim.compute_sensors().T1)
+    _cascade_root: Optional[str] = None  # component that triggered the cascade
+    _cascade_root_day: Optional[float] = None
+    _cascade_downstream: list = []  # [{component, day, triggered_by, reason}]
+
     # Record day-0 fault timing for already-active faults
     for fault in initial_faults:
         sev = fault.get("severity")
@@ -166,19 +177,54 @@ def project(
 
     while elapsed_hours < total_hours:
         step = min(PROJECTION_STEP_HRS, total_hours - elapsed_hours)
+        elapsed_days = (elapsed_hours + step) / 24.0
 
-        # ── Change 1: dynamic temp_mult from actual running T1 ─────────────────
-        # Cascades propagate: filter degrades → T1 rises → other components
-        # degrade faster. Without this, all component health lines are straight.
+        # Apply ambient profile if provided: override sim.ambient_f per day
+        if ambient_profile:
+            day_idx = min(int(elapsed_hours / 24.0), len(ambient_profile) - 1)
+            profile_entry = ambient_profile[day_idx]
+            sim.ambient_f = profile_entry.get("temp_f", sim.ambient_f)
+
+        # Dynamic temp_mult from actual running T1 — cascades propagate:
+        # filter degrades → T1 rises → other components degrade faster.
         _reading_now = sim.compute_sensors()
         temp_mult = get_ambient_multiplier(_reading_now.T1)
+
+        # Detect cascade onset: temp_mult stepped up significantly
+        if temp_mult > _prev_temp_mult + 0.15 and _cascade_root is None:
+            # Identify which faulted component is the thermal root cause
+            for cid in ("fluid_filter", "thermal_valve", "oil_cooler"):
+                comp = sim.components.get(cid)
+                if comp and comp.health_pct <= DEGRADATION_FAULT_PCT:
+                    _cascade_root = cid
+                    _cascade_root_day = round(elapsed_days, 1)
+                    break
+
+        # Track components being accelerated by cascade
+        if _cascade_root is not None and temp_mult > _prev_temp_mult:
+            for cid, component in sim.components.items():
+                if cid == _cascade_root:
+                    continue
+                comp_key = f"CASCADE_{cid}"
+                if comp_key not in recorded_fault_sigs and component.health_pct < 70.0:
+                    recorded_fault_sigs.add(comp_key)
+                    _cascade_downstream.append({
+                        "component": cid,
+                        "day": round(elapsed_days, 1),
+                        "triggered_by": _cascade_root,
+                        "cascade_reason": (
+                            f"T1 elevated by {_cascade_root.replace('_',' ')} failure "
+                            f"— degradation rate ×{temp_mult:.1f}"
+                        ),
+                    })
+
+        _prev_temp_mult = temp_mult
 
         for cid, component in sim.components.items():
             component.degrade(step, load_mult, temp_mult)
 
         sim.total_hours += step
         elapsed_hours += step
-        elapsed_days = elapsed_hours / 24.0
 
         faults = sim.get_active_faults()
         for fault in faults:
@@ -213,6 +259,11 @@ def project(
                         "fault_code": code,
                         "label": CORRELATION_LABELS.get(corr_id, corr_id),
                         "interpretation": f"Projected to activate at day {elapsed_days:.0f} — {CORRELATION_LABELS.get(corr_id, code)}",
+                        "triggered_by": _cascade_root if _cascade_root else None,
+                        "cascade_reason": (
+                            f"Downstream of {_cascade_root.replace('_',' ')} thermal cascade"
+                            if _cascade_root else None
+                        ),
                     })
 
         # Component health crossings — FTA events even without sensor alarm
@@ -233,6 +284,11 @@ def project(
                                 "fault_code": comp_key,
                                 "label": CORRELATION_LABELS.get(corr_id, corr_id),
                                 "interpretation": f"Projected at day {elapsed_days:.0f} — {comp_info['label']}",
+                                "triggered_by": _cascade_root if _cascade_root else None,
+                                "cascade_reason": (
+                                    f"Downstream of {_cascade_root.replace('_',' ')} thermal cascade"
+                                    if _cascade_root else None
+                                ),
                             })
 
         if elapsed_hours >= next_sample:
@@ -248,10 +304,24 @@ def project(
                 })
             next_sample += sample_interval
 
+    # Build cascade chains output
+    if _cascade_root and _cascade_downstream:
+        result.cascade_chains = [{
+            "root_cause": _cascade_root,
+            "root_cause_day": _cascade_root_day,
+            "mechanism": "thermal_cascade",
+            "description": (
+                f"{_cascade_root.replace('_',' ').title()} degraded to fault threshold, "
+                f"causing T1 rise that accelerated downstream component wear"
+            ),
+            "downstream": _cascade_downstream,
+        }]
+
     result.risk_summary = _build_risk_summary(result, sim, days)
     result.mitigations = _build_mitigations(result, sim, state)
     result.chart_annotations = _build_chart_annotations(result, sim)
-    result.timeline = _build_timeline(result)  # Change 3: event stream
+    result.timeline = _build_timeline(result)
+    result.explanation = _build_explanation(result, sim, state, days)
 
     return result
 
@@ -590,6 +660,153 @@ def _build_mitigations(result: ProjectionResult,
         })
 
     return mitigations
+
+
+def _build_explanation(
+    result: ProjectionResult,
+    final_state: MachineState,
+    original_state: MachineState,
+    projection_days: float,
+) -> dict:
+    """
+    Build a structured plain-English explanation of the projection outcome.
+    Fields: headline, top_drivers, what_changes_recommendation,
+            model_confidence, causal_chain.
+    """
+    components = final_state.components
+
+    # ── Binding constraint (headline) ─────────────────────────────────────────
+    if result.days_to_shutdown is not None:
+        d = result.days_to_shutdown
+        constraint_comp = result.first_fault_type or "unknown component"
+        headline = (
+            f"Machine projected to shut down in {d:.0f} days due to "
+            f"{_fault_title(constraint_comp).lower()}."
+        )
+    elif result.days_to_first_fault is not None:
+        d = result.days_to_first_fault
+        headline = (
+            f"Maintenance required in {d:.0f} days "
+            f"({result.first_fault_type}). No shutdown within {projection_days:.0f}-day window."
+        )
+    elif result.days_to_first_warning is not None:
+        headline = (
+            f"Warning threshold approached in {result.days_to_first_warning:.0f} days. "
+            f"No fault risk within {projection_days:.0f}-day window."
+        )
+    else:
+        headline = f"No fault conditions projected within {projection_days:.0f} days."
+
+    # ── Top drivers ───────────────────────────────────────────────────────────
+    # Score each component by how much health it loses and its fault proximity
+    drivers = []
+    for cid, traj in result.component_trajectories.items():
+        if not traj:
+            continue
+        start_h = traj[0]["health_pct"]
+        end_h = traj[-1]["health_pct"]
+        loss = start_h - end_h
+        if loss <= 0:
+            continue
+        fault_cross = result.chart_annotations.get(cid, {}).get("fault_cross_day")
+        # Sensitivity: HIGH if crosses fault threshold, MEDIUM if >10pt loss, LOW otherwise
+        if fault_cross is not None:
+            sensitivity = "HIGH"
+        elif loss > 10:
+            sensitivity = "MEDIUM"
+        else:
+            sensitivity = "LOW"
+        comp = components.get(cid)
+        comp_name = cid.replace("_", " ").title()
+        drivers.append({
+            "component": cid,
+            "name": comp_name,
+            "current_health_pct": round(start_h, 1),
+            "projected_health_pct": round(end_h, 1),
+            "health_loss_pct": round(loss, 1),
+            "effect": (
+                f"Drops from {start_h:.0f}% to {end_h:.0f}% over {projection_days:.0f} days"
+                + (f" — fault threshold crossed at day {fault_cross:.0f}" if fault_cross else "")
+            ),
+            "sensitivity": sensitivity,
+        })
+
+    drivers.sort(key=lambda d: (d["sensitivity"] == "HIGH", d["health_loss_pct"]), reverse=True)
+    top_drivers = drivers[:3]
+
+    # ── What changes recommendation ───────────────────────────────────────────
+    if result.days_to_shutdown is not None:
+        # Find the component closest to threshold
+        binding_comp = None
+        min_health = 100.0
+        for cid, comp in components.items():
+            if comp.health_pct < min_health:
+                min_health = comp.health_pct
+                binding_comp = cid
+        if binding_comp:
+            what_changes = (
+                f"Servicing {binding_comp.replace('_',' ')} (currently {min_health:.0f}% health) "
+                f"would extend the shutdown window. "
+                f"Reducing load or ambient temperature also extends component life."
+            )
+        else:
+            what_changes = "Reduce operating load or ambient temperature to extend component life."
+    elif result.days_to_first_fault is not None:
+        what_changes = (
+            f"Scheduling service before day {result.days_to_first_fault:.0f} prevents the "
+            f"{result.first_fault_type} fault. Operating at lower load extends the window further."
+        )
+    else:
+        what_changes = (
+            "Continue current operating conditions. "
+            "Preventive service at next scheduled interval is sufficient."
+        )
+
+    # ── Model confidence ──────────────────────────────────────────────────────
+    model_confidence = {
+        "thermodynamics": "SYNTHETIC — isentropic model with empirical correction factors",
+        "degradation_rates": "SYNTHETIC — based on OEM service intervals, not field telemetry",
+        "load_multipliers": "SYNTHETIC — stepped approximation (1x/1.3x/2x/3.5x by load band)",
+        "ambient_multipliers": "SYNTHETIC — stepped approximation (1x/1.3x/1.5x/2x by temp band)",
+        "fault_thresholds": "FIELD_VALIDATED — OEM fault codes and setpoints from Sullair documentation",
+        "note": "All rates require validation against real machine sensor history for accuracy.",
+    }
+
+    # ── Causal chain narrative ────────────────────────────────────────────────
+    if result.cascade_chains:
+        chain = result.cascade_chains[0]
+        root = chain["root_cause"].replace("_", " ")
+        downstream_names = [d["component"].replace("_", " ") for d in chain["downstream"][:2]]
+        downstream_str = " and ".join(downstream_names) if downstream_names else "downstream components"
+        causal_chain = (
+            f"{root.title()} degradation raises discharge temperature, "
+            f"which accelerates wear on {downstream_str}, "
+            f"ultimately driving the {result.first_fault_type or 'projected fault'}."
+        )
+    elif result.days_to_shutdown is not None:
+        causal_chain = (
+            f"Continued operation at current conditions leads to "
+            f"{_fault_title(result.first_fault_type or '').lower()} "
+            f"in {result.days_to_shutdown:.0f} days."
+        )
+    elif result.days_to_first_fault is not None:
+        causal_chain = (
+            f"Normal wear brings {result.first_fault_type} to maintenance threshold "
+            f"in {result.days_to_first_fault:.0f} days under current load and ambient conditions."
+        )
+    else:
+        causal_chain = (
+            "No dominant failure mechanism active within the projection window. "
+            "Machine operating within normal wear parameters."
+        )
+
+    return {
+        "headline": headline,
+        "top_drivers": top_drivers,
+        "what_changes_recommendation": what_changes,
+        "model_confidence": model_confidence,
+        "causal_chain": causal_chain,
+    }
 
 
 def compare_scenarios(

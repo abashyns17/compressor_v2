@@ -20,6 +20,12 @@ class ProjectionRequest(BaseModel):
         description="Component IDs mapped to deferral in days. "
                     "e.g. {'fluid_filter': 60, 'shaft_seal': 730}"
     )
+    ambient_profile: Optional[list] = Field(
+        None,
+        description="Per-day ambient temperature profile. Each entry: "
+                    "{day: int, temp_f: float, temp_c: float}. "
+                    "If omitted and ambient_source != 'manual', auto-fetched from weather service."
+    )
 
 
 class CompareRequest(BaseModel):

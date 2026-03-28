@@ -9,6 +9,18 @@ from typing import Optional
 from core.constants import DEGRADATION_RATES, DEGRADATION_ONSET_PCT, DEGRADATION_FAULT_PCT
 
 
+def _phase_multiplier(health_pct: float) -> float:
+    """Return degradation rate multiplier based on health phase."""
+    if health_pct > 70.0:
+        return 0.7
+    elif health_pct >= 30.0:
+        # Linear interpolation: 0.7x at 70%, 2.0x at 30%
+        t = (70.0 - health_pct) / 40.0
+        return 0.7 + t * 1.3
+    else:
+        return 3.0
+
+
 @dataclass
 class Component:
     id: str
@@ -41,8 +53,15 @@ class Component:
         return max(0.0, self.operating_hours - self.service_interval_hrs)
 
     def degrade(self, hours: float, load_multiplier: float = 1.0, temp_multiplier: float = 1.0):
-        """Advance degradation by given hours under operating conditions."""
-        rate = self.base_degradation_rate * load_multiplier * temp_multiplier
+        """Advance degradation by given hours under operating conditions.
+
+        Uses phase-dependent acceleration:
+          - health > 70%  : slow phase (0.7x)
+          - health 30–70% : accelerating (0.7x → 2.0x linear interpolation)
+          - health < 30%  : rapid phase (3.0x)
+        """
+        phase_mult = _phase_multiplier(self.health_pct)
+        rate = self.base_degradation_rate * load_multiplier * temp_multiplier * phase_mult
         loss = (rate / 100.0) * hours
         self.health_pct = max(0.0, self.health_pct - loss)
         self.operating_hours += hours
