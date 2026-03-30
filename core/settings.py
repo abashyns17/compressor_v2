@@ -1,5 +1,7 @@
 """
 Application settings — persisted to data/settings.json.
+Falls back to environment variables for defaults, making Railway deployment work
+without requiring a pre-existing settings.json.
 """
 
 import json
@@ -12,6 +14,16 @@ _SETTINGS_PATH = os.path.join(
 )
 
 
+def _env_defaults() -> dict:
+    """Read defaults from environment variables (useful for Railway / Docker)."""
+    return {
+        "weather_service_url": os.environ.get(
+            "WEATHER_SERVICE_URL", "http://localhost:8001"
+        ),
+        "weather_location": os.environ.get("WEATHER_LOCATION", "Valencia"),
+    }
+
+
 @dataclass
 class Settings:
     weather_location: str = "Valencia"
@@ -19,7 +31,15 @@ class Settings:
     ambient_source: Literal["manual", "live", "climatology"] = "manual"
 
 
-_settings: Settings = Settings()
+def _make_default_settings() -> Settings:
+    env = _env_defaults()
+    return Settings(
+        weather_location=env["weather_location"],
+        weather_service_url=env["weather_service_url"],
+    )
+
+
+_settings: Settings = _make_default_settings()
 
 
 def load_settings() -> Settings:
@@ -29,9 +49,14 @@ def load_settings() -> Settings:
         try:
             with open(path, "r") as f:
                 data = json.load(f)
-            _settings = Settings(**{k: v for k, v in data.items() if hasattr(Settings, k)})
+            # Start from env defaults, then overlay persisted values
+            base = asdict(_make_default_settings())
+            base.update({k: v for k, v in data.items() if hasattr(Settings, k)})
+            _settings = Settings(**base)
         except Exception:
-            _settings = Settings()
+            _settings = _make_default_settings()
+    else:
+        _settings = _make_default_settings()
     return _settings
 
 

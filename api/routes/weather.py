@@ -5,14 +5,14 @@ GET /weather/ambient-profile?days=90
 
 Merges:
   - weather3 /api/forecast (days 0–15, deterministic)
-  - weather3 /api/scenarios (days 16+, P10/P50/P90 climatology)
+  - weather3 /api/scenarios (days 0–N, climatology P10/P50/P90)
 
 Returns central_profile, band_low (P10), band_high (P90) arrays,
-each entry as {day, temp_c, temp_f}.  All temps in both °C and °F
-since the projector uses °F internally.
+each entry as {day, temp_c, temp_f}.
 """
 
 import httpx
+from datetime import date, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from core.settings import get_settings
 
@@ -23,10 +23,6 @@ _F_PER_C = 9.0 / 5.0
 
 def _c_to_f(c: float) -> float:
     return c * _F_PER_C + 32.0
-
-
-def _f_to_c(f: float) -> float:
-    return (f - 32.0) * 5.0 / 9.0
 
 
 def _current_percentile(current_c: float, p10_c: float, p50_c: float, p90_c: float) -> str:
@@ -40,76 +36,106 @@ def _current_percentile(current_c: float, p10_c: float, p50_c: float, p90_c: flo
         return "hot_above_p90"
 
 
+def _build_day_map(readings: list, start: date) -> dict:
+    """Convert {date, temperature_c} readings to {day_offset: temp_c}."""
+    result = {}
+    for r in readings:
+        try:
+            d = date.fromisoformat(r["date"])
+            offset = (d - start).days
+            result[offset] = r["temperature_c"]
+        except (KeyError, ValueError):
+            pass
+    return result
+
+
 @router.get("/ambient-profile")
 def get_ambient_profile(days: int = Query(90, ge=1, le=365)):
     """
-    Build a blended ambient temperature profile.
+    Build a blended ambient temperature profile for the next N days.
 
-    Days 0–15  : deterministic forecast (all three bands identical — no uncertainty).
-    Days 16+   : climatology P10 / P50 / P90 (band opens from day 16).
-
-    Returns temp in both °C and °F.
+    Days 0–forecast_days  : deterministic forecast (all three bands identical).
+    Days after            : climatology P10 / P50 / P90 band opens up.
     """
     settings = get_settings()
     base_url = settings.weather_service_url.rstrip("/")
     location = settings.weather_location
+
+    today = date.today()
+    end_date = today + timedelta(days=days)
 
     # ── Fetch forecast (days 0–15) ─────────────────────────────────────────────
     try:
         forecast_resp = httpx.get(
             f"{base_url}/api/forecast",
             params={"days": 16, "location_name": location},
-            timeout=10.0,
+            timeout=15.0,
         )
         forecast_resp.raise_for_status()
         forecast_data = forecast_resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Weather service unreachable: {exc}")
 
-    # ── Fetch scenarios (full projection window) ───────────────────────────────
+    # ── Fetch climatology scenarios ────────────────────────────────────────────
     try:
         scenario_resp = httpx.get(
             f"{base_url}/api/scenarios",
-            params={"days": days, "location_name": location, "percentiles": "10,50,90"},
-            timeout=10.0,
+            params={
+                "start_date": today.isoformat(),
+                "end_date": end_date.isoformat(),
+                "location_name": location,
+            },
+            timeout=15.0,
         )
         scenario_resp.raise_for_status()
         scenario_data = scenario_resp.json()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Weather service unreachable: {exc}")
 
-    # ── Parse forecast entries → {day_index: temp_c} ──────────────────────────
-    forecast_entries = forecast_data.get("forecast", [])
+    # ── Parse forecast ─────────────────────────────────────────────────────────
+    # /api/forecast returns {readings: [{date, temperature_c}], forecast_reliable_days, ...}
+    forecast_readings = forecast_data.get("readings", [])
     forecast_reliable_days = forecast_data.get("forecast_reliable_days", 7)
-    forecast_days = len(forecast_entries)
-    current_temp_c = forecast_data.get("current_temp_c", None)
-    if current_temp_c is None and forecast_entries:
-        current_temp_c = forecast_entries[0].get("temp_c", 15.0)
+    forecast_days = len(forecast_readings)
 
-    forecast_by_day: dict = {}
-    for entry in forecast_entries:
-        d = entry.get("day", entry.get("day_index", 0))
-        forecast_by_day[int(d)] = entry.get("temp_c", 15.0)
+    forecast_map = _build_day_map(forecast_readings, today)
 
-    # ── Parse scenario percentiles → {day_index: {p10, p50, p90}} ─────────────
-    scenario_entries = scenario_data.get("scenarios", scenario_data.get("daily", []))
-    scenario_by_day: dict = {}
-    for entry in scenario_entries:
-        d = int(entry.get("day", entry.get("day_index", 0)))
-        scenario_by_day[d] = {
-            "p10": entry.get("median_p10", entry.get("p10", current_temp_c or 10.0)),
-            "p50": entry.get("median_p50", entry.get("p50", current_temp_c or 15.0)),
-            "p90": entry.get("median_p90", entry.get("p90", current_temp_c or 20.0)),
-        }
+    # Current temp — first reading or explicit field
+    current_temp_c = forecast_data.get("current_temp_c") or (
+        forecast_readings[0]["temperature_c"] if forecast_readings else 15.0
+    )
 
-    # Determine current percentile position using day-0 climatology if available
-    if 0 in scenario_by_day and current_temp_c is not None:
-        s0 = scenario_by_day[0]
-        current_percentile = _current_percentile(
-            current_temp_c, s0["p10"], s0["p50"], s0["p90"]
-        )
-    else:
-        current_percentile = "unknown"
+    # ── Parse climatology scenarios ────────────────────────────────────────────
+    # /api/scenarios returns {scenarios: [{name, percentile, readings: [{date, temperature_c}]}]}
+    scenarios_list = scenario_data.get("scenarios", [])
+
+    # Find P10, P50, P90 by percentile field
+    p10_map: dict = {}
+    p50_map: dict = {}
+    p90_map: dict = {}
+
+    for sc in scenarios_list:
+        pct = sc.get("percentile")
+        rdgs = sc.get("readings", [])
+        if pct == 10:
+            p10_map = _build_day_map(rdgs, today)
+        elif pct == 50:
+            p50_map = _build_day_map(rdgs, today)
+        elif pct == 90:
+            p90_map = _build_day_map(rdgs, today)
+
+    # Fall back to baseline_mean if no P50
+    if not p50_map:
+        for sc in scenarios_list:
+            if sc.get("name") == "baseline_mean":
+                p50_map = _build_day_map(sc.get("readings", []), today)
+                break
+
+    # Determine current percentile
+    p10_day0 = p10_map.get(0, current_temp_c)
+    p50_day0 = p50_map.get(0, current_temp_c)
+    p90_day0 = p90_map.get(0, current_temp_c)
+    current_percentile = _current_percentile(current_temp_c, p10_day0, p50_day0, p90_day0)
 
     # ── Build merged profile arrays ────────────────────────────────────────────
     central_profile = []
@@ -117,48 +143,34 @@ def get_ambient_profile(days: int = Query(90, ge=1, le=365)):
     band_high = []
 
     for day_idx in range(days):
-        if day_idx < forecast_days and day_idx in forecast_by_day:
-            # Forecast zone: all three bands identical
-            tc = forecast_by_day[day_idx]
+        if day_idx < forecast_days and day_idx in forecast_map:
+            # Deterministic forecast zone — all three bands identical
+            tc = forecast_map[day_idx]
             tf = round(_c_to_f(tc), 1)
             tc = round(tc, 1)
             central_profile.append({"day": day_idx, "temp_c": tc, "temp_f": tf})
             band_low.append({"day": day_idx, "temp_c": tc, "temp_f": tf})
             band_high.append({"day": day_idx, "temp_c": tc, "temp_f": tf})
         else:
-            # Climatology zone: use nearest available scenario entry
-            nearest = min(
-                (k for k in scenario_by_day if k <= day_idx),
-                key=lambda k: day_idx - k,
-                default=None,
-            )
-            if nearest is None:
-                # Fall back to forecast last value or a default
-                tc_fallback = forecast_by_day.get(forecast_days - 1, 15.0)
-                p10_c = tc_fallback
-                p50_c = tc_fallback
-                p90_c = tc_fallback
-            else:
-                s = scenario_by_day[nearest]
-                p10_c = s["p10"]
-                p50_c = s["p50"]
-                p90_c = s["p90"]
+            # Climatology zone — band opens up
+            # Find nearest available day in scenario maps
+            def nearest(m: dict, idx: int) -> float:
+                if idx in m:
+                    return m[idx]
+                # Try nearest available key
+                keys = [k for k in m if k <= idx]
+                if keys:
+                    return m[max(keys)]
+                keys = list(m.keys())
+                return m[min(keys)] if keys else current_temp_c
 
-            central_profile.append({
-                "day": day_idx,
-                "temp_c": round(p50_c, 1),
-                "temp_f": round(_c_to_f(p50_c), 1),
-            })
-            band_low.append({
-                "day": day_idx,
-                "temp_c": round(p10_c, 1),
-                "temp_f": round(_c_to_f(p10_c), 1),
-            })
-            band_high.append({
-                "day": day_idx,
-                "temp_c": round(p90_c, 1),
-                "temp_f": round(_c_to_f(p90_c), 1),
-            })
+            p10_c = nearest(p10_map, day_idx)
+            p50_c = nearest(p50_map, day_idx)
+            p90_c = nearest(p90_map, day_idx)
+
+            central_profile.append({"day": day_idx, "temp_c": round(p50_c, 1), "temp_f": round(_c_to_f(p50_c), 1)})
+            band_low.append({"day": day_idx,         "temp_c": round(p10_c, 1), "temp_f": round(_c_to_f(p10_c), 1)})
+            band_high.append({"day": day_idx,        "temp_c": round(p90_c, 1), "temp_f": round(_c_to_f(p90_c), 1)})
 
     return {
         "location": location,
